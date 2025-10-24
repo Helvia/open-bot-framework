@@ -1,0 +1,56 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { OpenBotDto } from 'src/dto/openbot.dto';
+import { PaginatedTransform } from 'src/dto/page.dto';
+import { OpenBot } from 'src/entities/openbot.entity';
+import { FindManyOptions } from 'typeorm';
+import { Repository } from 'typeorm/repository/Repository';
+
+@Injectable()
+export class OpenBotService {
+    constructor(
+        @InjectRepository(OpenBot)
+        private readonly openBotRepository: Repository<OpenBot>
+    ) {}
+
+    async findAll(page: number, pageSize: number): Promise<PaginatedTransform<OpenBot, OpenBotDto>> {
+        let selectSkip: FindManyOptions<OpenBot> = {};
+        if (!isNaN(page) && !isNaN(pageSize)) {
+            selectSkip = {
+                take: pageSize,
+                skip: page * pageSize
+            } as FindManyOptions<OpenBot>;
+        }
+        return new PaginatedTransform(await this.openBotRepository.findAndCount(selectSkip), page, pageSize, d =>
+            d.toDto()
+        );
+    }
+
+    async findById(id: string): Promise<OpenBot> {
+        const openBot = await this.openBotRepository.findOneBy({ id });
+        if (openBot) {
+            return openBot;
+        }
+        throw new NotFoundException();
+    }
+
+    async create(openBotDto: OpenBotDto): Promise<OpenBotDto> {
+        const openBot = new OpenBot();
+        openBot.appId = crypto.randomUUID();
+        openBot.endpoint = openBotDto.endpoint;
+        openBot.schemaVersion = 'V1.3';
+        return (await this.openBotRepository.save(openBot)).toDto();
+    }
+
+    async update(id: string, openBotDto: Partial<OpenBotDto>): Promise<OpenBotDto> {
+        const openBot = await this.findById(id);
+        openBot.endpoint = openBotDto.endpoint ?? openBot.endpoint;
+        openBot.schemaVersion = openBotDto.schemaVersion ?? openBot.schemaVersion;
+        return (await this.openBotRepository.save(openBot)).toDto();
+    }
+
+    async delete(id: string): Promise<void> {
+        const openBot = await this.findById(id);
+        await this.openBotRepository.delete({ id: openBot.id });
+    }
+}

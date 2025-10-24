@@ -1,0 +1,77 @@
+import { OpenBotDto, OpenBotSecretDto } from 'src/dto/openbot.dto';
+import {
+    Column,
+    Entity,
+    PrimaryGeneratedColumn,
+    CreateDateColumn,
+    UpdateDateColumn,
+    ManyToOne,
+    JoinColumn
+} from 'typeorm';
+
+@Entity()
+export class OpenBot {
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
+
+    @Column({ unique: true })
+    appId: string;
+
+    @Column()
+    endpoint: string;
+
+    @Column({ default: 'v1.3' })
+    schemaVersion: string;
+
+    @CreateDateColumn()
+    createdAt: Date;
+
+    @UpdateDateColumn()
+    updatedAt: Date;
+
+    toDto(): OpenBotDto {
+        return {
+            id: this.id,
+            appId: this.appId,
+            endpoint: this.endpoint,
+            schemaVersion: this.schemaVersion,
+            createdAt: this.createdAt,
+            updatedAt: this.updatedAt
+        };
+    }
+}
+
+@Entity()
+export class OpenBotSecret {
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
+
+    @ManyToOne(() => OpenBot, { onDelete: 'CASCADE' })
+    @JoinColumn()
+    openBot: OpenBot;
+
+    @Column()
+    description: string;
+
+    @CreateDateColumn()
+    createdAt: Date;
+
+    @Column({ type: 'timestamptz', nullable: true })
+    expiresAt: Date;
+
+    @Column()
+    secretHash: string;
+
+    @Column()
+    plainReducted: string;
+
+    toDto(secret?: string): OpenBotSecretDto {
+        return {
+            secretId: this.id,
+            description: this.description,
+            createdAt: this.createdAt,
+            expiresAt: this.expiresAt,
+            secret: secret ?? this.plainReducted
+        };
+    }
+}
