@@ -1,10 +1,10 @@
 import { WebChatChannelDto } from 'src/dto/webchat.dto';
-import { Entity, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Column, CreateDateColumn } from 'typeorm';
+import { Entity, ManyToOne, JoinColumn, Column, CreateDateColumn, Index, PrimaryColumn } from 'typeorm';
 import { OpenBot } from './openbot.entity';
 
 @Entity()
 export class WebChatChannel {
-    @PrimaryGeneratedColumn('uuid')
+    @PrimaryColumn()
     id: string;
 
     @ManyToOne(() => OpenBot, { onDelete: 'CASCADE' })
@@ -15,9 +15,11 @@ export class WebChatChannel {
     name: string;
 
     @Column()
+    @Index()
     secret1: string;
 
     @Column()
+    @Index()
     secret2: string;
 
     @CreateDateColumn()

@@ -7,13 +7,17 @@ import { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConne
 import { OpenBotModule } from './features/openbot/openbot.module';
 import { OpenBotsecretModule } from './features/openbotsecret/openbotsecret.module';
 import { WebChatModule } from './features/channels/webchat/webchat.module';
+import { DirectlineModule } from './features/directline/directline.module';
+import { CacheModule } from '@nestjs/cache-manager';
 
 @Module({
     imports: [
+        CacheModule.register({ isGlobal: true }),
         ConfigModule.forRoot({
             envFilePath: ['.env.local', '.env'],
             isGlobal: true
         }),
+        DirectlineModule,
         TypeOrmModule.forRootAsync({
             imports: [ConfigModule],
             useFactory: (configService: ConfigService) =>

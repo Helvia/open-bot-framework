@@ -9,6 +9,7 @@ import { OpenBotService } from 'src/features/openbot/openbot.service';
 @Module({
     imports: [OpenBotModule, TypeOrmModule.forFeature([WebChatChannel])],
     controllers: [WebChatController],
-    providers: [WebChatService, OpenBotService]
+    providers: [WebChatService, OpenBotService],
+    exports: [OpenBotService, TypeOrmModule]
 })
 export class WebChatModule {}

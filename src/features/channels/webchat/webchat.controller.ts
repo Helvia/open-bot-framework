@@ -38,7 +38,7 @@ export class WebChatController {
         @Param('botId', ParseUUIDPipe) botId: string,
         @Param('id', ParseUUIDPipe) id: string
     ): Promise<WebChatChannelDto> {
-        return (await this.webchatService.findById(botId, id)).toDto();
+        return (await this.webchatService.findByIdInBot(botId, id)).toDto();
     }
 
     @Post()
