@@ -5,7 +5,8 @@ import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions';
 import { OpenBotModule } from './features/openbot/openbot.module';
-import { OpenbotsecretModule } from './features/openbotsecret/openbotsecret.module';
+import { OpenBotsecretModule } from './features/openbotsecret/openbotsecret.module';
+import { WebChatModule } from './features/channels/webchat/webchat.module';
 
 @Module({
     imports: [
@@ -33,7 +34,8 @@ import { OpenbotsecretModule } from './features/openbotsecret/openbotsecret.modu
             inject: [ConfigService]
         }),
         OpenBotModule,
-        OpenbotsecretModule
+        OpenBotsecretModule,
+        WebChatModule
     ],
     controllers: [AppController],
     providers: [AppService]

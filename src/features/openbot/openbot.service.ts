@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { OpenBotDto } from 'src/dto/openbot.dto';
 import { PaginatedTransform } from 'src/dto/page.dto';
 import { OpenBot } from 'src/entities/openbot.entity';
-import { FindManyOptions } from 'typeorm';
+import { FindManyOptions, QueryFailedError } from 'typeorm';
 import { Repository } from 'typeorm/repository/Repository';
 
 @Injectable()
@@ -36,10 +36,20 @@ export class OpenBotService {
 
     async create(openBotDto: OpenBotDto): Promise<OpenBotDto> {
         const openBot = new OpenBot();
-        openBot.appId = crypto.randomUUID();
+        openBot.handle = openBotDto.handle;
         openBot.endpoint = openBotDto.endpoint;
         openBot.schemaVersion = 'V1.3';
-        return (await this.openBotRepository.save(openBot)).toDto();
+        try {
+            return (await this.openBotRepository.save(openBot)).toDto();
+        } catch (e: unknown) {
+            if (e instanceof QueryFailedError) {
+                const driverError = e as QueryFailedError & { constraint: string };
+                if (driverError.constraint === 'IDX_OpenBot_handle') {
+                    throw new HttpException('The handle provided already exists', HttpStatus.CONFLICT);
+                }
+            }
+            throw new HttpException(`An error prevented this entity from persisting`, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     async update(id: string, openBotDto: Partial<OpenBotDto>): Promise<OpenBotDto> {

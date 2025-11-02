@@ -6,7 +6,8 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
     ManyToOne,
-    JoinColumn
+    JoinColumn,
+    Index
 } from 'typeorm';
 
 @Entity()
@@ -14,8 +15,9 @@ export class OpenBot {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ unique: true })
-    appId: string;
+    @Index('IDX_OpenBot_handle', { unique: true })
+    @Column()
+    handle: string;
 
     @Column()
     endpoint: string;
@@ -32,7 +34,7 @@ export class OpenBot {
     toDto(): OpenBotDto {
         return {
             id: this.id,
-            appId: this.appId,
+            handle: this.handle,
             endpoint: this.endpoint,
             schemaVersion: this.schemaVersion,
             createdAt: this.createdAt,

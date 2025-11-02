@@ -11,4 +11,4 @@ import { OpenBotService } from '../openbot/openbot.service';
     providers: [OpenBotSecretService, OpenBotService],
     controllers: [OpenBotSecretController]
 })
-export class OpenbotsecretModule {}
+export class OpenBotsecretModule {}

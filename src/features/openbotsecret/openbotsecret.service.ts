@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { OpenBotSecretDto } from 'src/dto/openbot.dto';
 import { OpenBotSecret } from 'src/entities/openbot.entity';
-import * as crypto from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindManyOptions } from 'typeorm';
 import { OpenBotService } from '../openbot/openbot.service';
 import { PaginatedTransform } from 'src/dto/page.dto';
+import { AuthorizationUtils } from '../authorization/authorization.utils';
 
 @Injectable()
 export class OpenBotSecretService {
@@ -49,8 +49,8 @@ export class OpenBotSecretService {
         const botSecret = new OpenBotSecret();
         botSecret.openBot = openBot;
         botSecret.description = payload.description;
-        const secretPlain = this.generateRandom(40);
-        botSecret.secretHash = crypto.createHash('sha256').update(secretPlain).digest('hex');
+        const secretPlain = AuthorizationUtils.generateRandom(40);
+        botSecret.secretHash = AuthorizationUtils.createHash(secretPlain);
         botSecret.plainReducted = secretPlain.slice(0, 3);
         const savedBotSecret = await this.openBotSecretRepository.save(botSecret);
         return savedBotSecret.toDto(secretPlain);
@@ -67,13 +67,5 @@ export class OpenBotSecretService {
     async delete(botId: string, id: string): Promise<void> {
         const secret = await this.findById(botId, id);
         await this.openBotSecretRepository.delete({ id: secret.id });
-    }
-
-    private generateRandom(length: number) {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-~';
-        const bytes = crypto.randomBytes(length);
-        return Array.from(bytes)
-            .map(b => chars[b % chars.length])
-            .join('');
     }
 }
