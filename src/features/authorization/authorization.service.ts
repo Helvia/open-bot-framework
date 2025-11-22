@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { DirectLineTokenPayload } from 'src/dto/directline.dto';
+import { OpenBotSecretService } from '../openbotsecret/openbotsecret.service';
+import { AccessTokenResponseDto } from 'src/dto/token.dto';
 
 @Injectable()
 export class AuthorizationService {
@@ -9,28 +9,40 @@ export class AuthorizationService {
 
     constructor(
         private readonly jwtService: JwtService,
-        private readonly configService: ConfigService
-    ) {
-        this.directLineHost = String(this.configService.get<string>('DIRECTLINE_HOST') ?? '') || '';
-    }
+        private readonly openBotSecretService: OpenBotSecretService
+    ) {}
 
-    createToken(payload: DirectLineTokenPayload, expiration: number): string {
-        const now = Math.floor(Date.now() / 1000);
-        const claims = {
-            ...payload,
-            iss: `https://${this.directLineHost}/`,
-            aud: `https://${this.directLineHost}/`,
-            nbf: now,
-            exp: now + expiration
-        };
-        return this.jwtService.sign(claims);
-    }
-
-    verifyToken(token: string, ignoreExpiration: boolean): DirectLineTokenPayload {
+    verifyAccessToken(token: string): AccessTokenResponseDto {
         try {
-            return this.jwtService.verify<DirectLineTokenPayload>(token, { ignoreExpiration });
+            return this.jwtService.verify<AccessTokenResponseDto>(token);
         } catch (e: unknown) {
             throw new UnauthorizedException(`Invalid token. ${String(e)}`);
         }
+    }
+
+    async generateAccessToken(clientId: string, clientSecret: string, scope?: string): Promise<AccessTokenResponseDto> {
+        // Validate against bot credentials
+        await this.openBotSecretService.validateSecret(clientId, clientSecret);
+
+        // Typical MS behavior: 1 hour expiry
+        const expiresInSeconds = 3600;
+
+        const tokenPayload = {
+            aud: scope || 'https://api.botframework.com/.default',
+            iss: this.directLineHost,
+            sub: clientId
+        };
+
+        // Sign JWT with your secret key (HMAC 256)
+        const accessToken = this.jwtService.sign(tokenPayload, {
+            algorithm: 'HS256',
+            expiresIn: expiresInSeconds
+        });
+
+        return {
+            token_type: 'Bearer',
+            expires_in: expiresInSeconds,
+            access_token: accessToken
+        };
     }
 }

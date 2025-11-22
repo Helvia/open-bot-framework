@@ -9,6 +9,7 @@ import { OpenBotService } from '../openbot/openbot.service';
 @Module({
     imports: [TypeOrmModule.forFeature([OpenBotSecret]), OpenBotModule],
     providers: [OpenBotSecretService, OpenBotService],
-    controllers: [OpenBotSecretController]
+    controllers: [OpenBotSecretController],
+    exports: [OpenBotService, TypeOrmModule]
 })
 export class OpenBotsecretModule {}

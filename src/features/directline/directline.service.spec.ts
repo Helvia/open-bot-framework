@@ -1,15 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { DirectlineService } from './directline.service';
+import { DirectlineConversationService } from './directline-conversation.service';
 
 describe('DirectlineService', () => {
-    let service: DirectlineService;
+    let service: DirectlineConversationService;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
-            providers: [DirectlineService]
+            providers: [DirectlineConversationService]
         }).compile();
 
-        service = module.get<DirectlineService>(DirectlineService);
+        service = module.get<DirectlineConversationService>(DirectlineConversationService);
     });
 
     it('should be defined', () => {

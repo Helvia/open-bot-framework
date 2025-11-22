@@ -38,7 +38,7 @@ export class OpenBotSecretController {
         @Param('botId', ParseUUIDPipe) botId: string,
         @Param('id', ParseUUIDPipe) id: string
     ): Promise<OpenBotSecretDto> {
-        return (await this.openbotsecretService.findById(botId, id)).toDto();
+        return (await this.openbotsecretService.findByIdInOpenBot(botId, id)).toDto();
     }
 
     @Post()

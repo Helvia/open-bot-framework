@@ -1,27 +1,37 @@
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { ConversationReference } from 'botframework-schema';
 import { DirectLineTokenPayload, DirectLineTokenResponse } from 'src/dto/directline.dto';
 import { AuthorizationUtils } from '../authorization/authorization.utils';
 import { WebChatService } from '../channels/webchat/webchat.service';
 import { ConfigService } from '@nestjs/config';
-import { AuthorizationService } from '../authorization/authorization.service';
-import { ConversationResponse } from 'src/dto/conversation.dto';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
-export class DirectlineService {
+export class DirectlineTokenService {
     private readonly expires: number;
-    private readonly host: string;
     private readonly region: string;
+    private readonly directLineHost: string;
 
     constructor(
         private readonly webChatService: WebChatService,
         private readonly configService: ConfigService,
-        private readonly authorizationService: AuthorizationService
+        private readonly jwtService: JwtService
     ) {
         this.expires = Number(this.configService.get<number | string>('JWT_EXPIRATION_SECONDS')) || 3600;
         // Populate host and region from env/config
-        this.host = String(this.configService.get<string>('DIRECTLINE_HOST') ?? '') || '';
         this.region = String(this.configService.get<string>('DIRECTLINE_REGION') ?? '') || '';
+        this.directLineHost = String(this.configService.get<string>('DIRECTLINE_HOST') ?? '') || '';
+    }
+
+    createToken(payload: DirectLineTokenPayload, expiration: number): string {
+        const now = Math.floor(Date.now() / 1000);
+        const claims = {
+            ...payload,
+            iss: `https://${this.directLineHost}/`,
+            aud: `https://${this.directLineHost}/`,
+            nbf: now,
+            exp: now + expiration
+        };
+        return this.jwtService.sign(claims);
     }
 
     async generateToken(authorizationHeader: string, user?: string): Promise<DirectLineTokenResponse> {
@@ -53,7 +63,7 @@ export class DirectlineService {
         return {
             conversationId,
             expires_in: this.expires,
-            token: this.authorizationService.createToken(tokenPayload, this.expires)
+            token: this.createToken(tokenPayload, this.expires)
         };
     }
 
@@ -63,7 +73,7 @@ export class DirectlineService {
             throw new BadRequestException('Wrong type of token provided. Provide Bearer');
         }
         // Validate signature
-        const validPayload = this.authorizationService.verifyToken(token, true);
+        const validPayload = this.verifyDirectLineToken(token, true);
 
         // Validate site exists
         const webChatSite = await this.webChatService.existsByIdCached(validPayload.site);
@@ -81,66 +91,15 @@ export class DirectlineService {
         return {
             conversationId: validPayload.conv,
             expires_in: this.expires,
-            token: this.authorizationService.createToken(newPayload, this.expires)
+            token: this.createToken(newPayload, this.expires)
         };
     }
 
-    async createConversation(
-        convRef: ConversationReference,
-        authorizationHeader: string
-    ): Promise<ConversationResponse> {
-        const securityKey = AuthorizationUtils.removeBearer(authorizationHeader);
-        if (!securityKey) {
-            throw new BadRequestException('Wrong type of token provided. Provide Bearer');
+    verifyDirectLineToken(token: string, ignoreExpiration: boolean): DirectLineTokenPayload {
+        try {
+            return this.jwtService.verify<DirectLineTokenPayload>(token, { ignoreExpiration });
+        } catch (e: unknown) {
+            throw new UnauthorizedException(`Invalid token. ${String(e)}`);
         }
-        if (!convRef.user?.id) {
-            throw new BadRequestException('No user provided');
-        }
-
-        // Identify type of security key
-        const dots = this.countDots(securityKey);
-        // JWT token (need to avoid the costly verify method)
-        if (dots === 2) {
-            const validPayload = this.authorizationService.verifyToken(securityKey, false);
-            const newPayload: DirectLineTokenPayload = {
-                bot: validPayload.bot,
-                site: validPayload.site,
-                conv: validPayload.conv,
-                user: convRef.user.id
-            };
-            const token = this.authorizationService.createToken(newPayload, this.expires);
-            const conversationId = validPayload.conv;
-            return {
-                conversationId,
-                expires_in: this.expires,
-                token,
-                streamUrl: this.generateStreamUrl(conversationId, token)
-            };
-        }
-
-        // Secret provided
-        if (dots === 1) {
-            const tokenResponse = await this.generateToken(securityKey, convRef.user.id);
-            const conversationId = tokenResponse.conversationId;
-            const { token } = tokenResponse;
-            return {
-                ...tokenResponse,
-                streamUrl: this.generateStreamUrl(conversationId, token)
-            };
-        }
-
-        throw new UnauthorizedException();
-    }
-
-    countDots(token: string): number {
-        let count = 0;
-        for (let i = 0, len = token.length; i < len; i++) {
-            if (token.charCodeAt(i) === 46) count++;
-        }
-        return count;
-    }
-
-    generateStreamUrl(conversationId: string, token: string): string {
-        return `wss://${this.host}/v3/directline/conversations/${conversationId}&watermark=-&t=${token}`;
     }
 }

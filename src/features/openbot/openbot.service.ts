@@ -1,16 +1,20 @@
-import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { OpenBotDto } from 'src/dto/openbot.dto';
 import { PaginatedTransform } from 'src/dto/page.dto';
 import { OpenBot } from 'src/entities/openbot.entity';
 import { FindManyOptions, QueryFailedError } from 'typeorm';
 import { Repository } from 'typeorm/repository/Repository';
+import { Cache } from 'cache-manager';
 
 @Injectable()
 export class OpenBotService {
     constructor(
         @InjectRepository(OpenBot)
-        private readonly openBotRepository: Repository<OpenBot>
+        private readonly openBotRepository: Repository<OpenBot>,
+        @Inject(CACHE_MANAGER)
+        private readonly cacheManager: Cache
     ) {}
 
     async findAll(page: number, pageSize: number): Promise<PaginatedTransform<OpenBot, OpenBotDto>> {
@@ -32,6 +36,21 @@ export class OpenBotService {
             return openBot;
         }
         throw new NotFoundException();
+    }
+
+    // Never expose to controller
+    async findByHandleCached(handle: string): Promise<OpenBot> {
+        return this.cacheManager.wrap(
+            handle,
+            async () => {
+                const openBot = await this.openBotRepository.findOneBy({ handle });
+                if (openBot) {
+                    return openBot;
+                }
+                throw new NotFoundException();
+            },
+            10
+        );
     }
 
     async create(openBotDto: OpenBotDto): Promise<OpenBotDto> {

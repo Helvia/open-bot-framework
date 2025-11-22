@@ -23,6 +23,9 @@ export class AuthorizationUtils {
     }
 
     static removeBearer(authorizationHeader: string): string | undefined {
+        if (!authorizationHeader) {
+            return undefined;
+        }
         return authorizationHeader.split('Bearer ')[1];
     }
 }

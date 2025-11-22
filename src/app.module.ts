@@ -9,6 +9,7 @@ import { OpenBotsecretModule } from './features/openbotsecret/openbotsecret.modu
 import { WebChatModule } from './features/channels/webchat/webchat.module';
 import { DirectlineModule } from './features/directline/directline.module';
 import { CacheModule } from '@nestjs/cache-manager';
+import { JwtModule } from '@nestjs/jwt';
 
 @Module({
     imports: [
@@ -18,6 +19,14 @@ import { CacheModule } from '@nestjs/cache-manager';
             isGlobal: true
         }),
         DirectlineModule,
+        JwtModule.registerAsync({
+            imports: [ConfigModule],
+            useFactory: (configService: ConfigService) => ({
+                secret: configService.get('JWT_SECRET')
+            }),
+            inject: [ConfigService],
+            global: true
+        }),
         TypeOrmModule.forRootAsync({
             imports: [ConfigModule],
             useFactory: (configService: ConfigService) =>

@@ -1,21 +1,13 @@
 import { Module } from '@nestjs/common';
 import { AuthorizationService } from './authorization.service';
 import { AuthorizationController } from './authorization.controller';
-import { JwtModule } from '@nestjs/jwt/dist/jwt.module';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { OpenBotsecretModule } from '../openbotsecret/openbotsecret.module';
+import { OpenBotSecretService } from '../openbotsecret/openbotsecret.service';
 
 @Module({
-    imports: [
-        JwtModule.registerAsync({
-            imports: [ConfigModule],
-            useFactory: (configService: ConfigService) => ({
-                secret: configService.get('JWT_SECRET')
-            }),
-            inject: [ConfigService]
-        })
-    ],
-    providers: [AuthorizationService],
+    imports: [OpenBotsecretModule],
+    providers: [AuthorizationService, OpenBotSecretService],
     controllers: [AuthorizationController],
-    exports: [AuthorizationService, JwtModule]
+    exports: [AuthorizationService]
 })
 export class AuthorizationModule {}
