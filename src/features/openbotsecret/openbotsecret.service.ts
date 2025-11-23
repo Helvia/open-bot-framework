@@ -49,7 +49,7 @@ export class OpenBotSecretService {
     }
 
     // Never expose in controller
-    async findById(id: string): Promise<OpenBotSecret> {
+    async findByIdCached(id: string): Promise<OpenBotSecret> {
         return this.cacheManager.wrap(
             id,
             async () => {
@@ -86,8 +86,8 @@ export class OpenBotSecretService {
         await this.openBotSecretRepository.delete({ id: secret.id });
     }
 
-    async validateSecret(clientId: string, clientSecretPlain: string) {
-        const openBotSecret = await this.findById(clientId);
+    async validateSecretCached(clientId: string, clientSecretPlain: string) {
+        const openBotSecret = await this.findByIdCached(clientId);
         if (openBotSecret.secretHash !== AuthorizationUtils.createHash(clientSecretPlain)) {
             throw new UnauthorizedException('Wrong secret provided');
         }

@@ -22,7 +22,7 @@ export class AuthorizationService {
 
     async generateAccessToken(clientId: string, clientSecret: string, scope?: string): Promise<AccessTokenResponseDto> {
         // Validate against bot credentials
-        await this.openBotSecretService.validateSecret(clientId, clientSecret);
+        await this.openBotSecretService.validateSecretCached(clientId, clientSecret);
 
         // Typical MS behavior: 1 hour expiry
         const expiresInSeconds = 3600;
