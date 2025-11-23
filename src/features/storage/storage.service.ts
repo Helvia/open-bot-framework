@@ -27,8 +27,7 @@ export class StorageService {
      * @param conversationId Conversation id used to generate object keys
      * @param activity Activity object whose attachments will be updated with contentUrl
      * @throws HttpException when any individual upload fails
-private storageBucket: string;
-    private storageHandle: S3Client;     */
+     */
     async uploadToActivity(files: UploadDto[], conversationId: string, activity: Activity) {
         for (const file of files) {
             try {
