@@ -13,18 +13,45 @@ export class DirectlineController {
         private readonly directLineService: DirectlineConversationService,
         private readonly directLineTokenService: DirectlineTokenService
     ) {}
+
+    /**
+     * Generate a DirectLine token from a web-chat secret.
+     * Expects Authorization header with "Bearer <secret>".
+     * Returns a DirectLineTokenResponse containing conversationId, token and expires_in.
+     *
+     * @param webChatSecret Authorization header value (Bearer webchat-secret)
+     * @returns Promise<DirectLineTokenResponse>
+     * @throws BadRequestException if header missing/invalid, UnauthorizedException on invalid secret
+     */
     @Post('tokens/generate')
     @HttpCode(200)
     generateToken(@Headers('authorization') webChatSecret: string): Promise<DirectLineTokenResponse> {
         return this.directLineTokenService.generateToken(webChatSecret);
     }
 
+    /**
+     * Refresh an existing DirectLine token.
+     * Expects Authorization header with "Bearer <token>".
+     *
+     * @param webChatSecret Authorization header value (Bearer token)
+     * @returns Promise<DirectLineTokenResponse>
+     * @throws BadRequestException if header missing/invalid, UnauthorizedException on invalid token
+     */
     @Post('tokens/refresh')
     @HttpCode(200)
     refreshToken(@Headers('authorization') webChatSecret: string): Promise<DirectLineTokenResponse> {
         return this.directLineTokenService.refreshToken(webChatSecret);
     }
 
+    /**
+     * Create a new conversation for a user.
+     * Expects a ConversationReference body and Authorization header (either secret or token).
+     *
+     * @param convRef ConversationReference payload (must contain user.id)
+     * @param securityKey Authorization header containing the secret or token
+     * @returns Promise<ConversationResponse> conversation metadata including token and streamUrl
+     * @throws BadRequestException if inputs invalid, UnauthorizedException if key invalid
+     */
     @Post('conversations')
     createConversation(
         @Body() convRef: ConversationReference,
@@ -33,6 +60,15 @@ export class DirectlineController {
         return this.directLineService.createConversation(convRef, securityKey);
     }
 
+    /**
+     * Retrieve conversation metadata (e.g. to open stream).
+     * Expects Authorization header with DirectLine token and optional watermark.
+     *
+     * @param convId Conversation identifier
+     * @param securityKey Authorization header value (Bearer token)
+     * @param watermark Optional watermark to set activity increment
+     * @returns ConversationResponse containing token, streamUrl and expires_in
+     */
     @Get('conversations/:convId')
     getConversation(
         @Param('convId') convId: string,
@@ -42,6 +78,18 @@ export class DirectlineController {
         return this.directLineService.getConversation(convId, securityKey, watermark);
     }
 
+    /**
+     * Upload multipart payload to a conversation.
+     * Expects multipart parts where first part name "activity" contains JSON activity,
+     * and subsequent parts are named "file" (0..n).
+     *
+     * @param convId Conversation identifier to attach files/activity
+     * @param securityKey Authorization header value (Bearer token/secret)
+     * @param userId Optional userId query param used by service
+     * @param req FastifyRequest to iterate parts
+     * @returns Promise resolving to service result (e.g. conversation info or activity id)
+     * @throws BadRequestException if required parts (activity) are missing or malformed
+     */
     @Post('conversations/:convId/upload')
     async uploadToConversation(
         @Param('convId') convId: string,
@@ -75,6 +123,17 @@ export class DirectlineController {
         return this.directLineService.userReplyToConversation(convId, activity, securityKey, files);
     }
 
+    /**
+     * Create an activity in a conversation (user sent activity).
+     * Expects a standard Activity JSON body and Authorization header (DirectLine token/secret).
+     * Returns HTTP 200 with created activity id.
+     *
+     * @param convId Conversation identifier
+     * @param activity Activity payload from client
+     * @param securityKey Authorization header value (Bearer token/secret)
+     * @returns Promise<unknown> typically { id: activityId }
+     * @throws BadRequestException / UnauthorizedException on invalid inputs or token
+     */
     @Post('conversations/:convId/activities')
     @HttpCode(200)
     createActivity(

@@ -12,6 +12,13 @@ export class AuthorizationService {
         private readonly openBotSecretService: OpenBotSecretService
     ) {}
 
+    /**
+     * Verify an access token (server-to-server) and return decoded payload.
+     *
+     * @param token JWT string to verify
+     * @returns AccessTokenResponseDto decoded token payload
+     * @throws UnauthorizedException when verification fails
+     */
     verifyAccessToken(token: string): AccessTokenResponseDto {
         try {
             return this.jwtService.verify<AccessTokenResponseDto>(token);
@@ -20,6 +27,16 @@ export class AuthorizationService {
         }
     }
 
+    /**
+     * Generate an access token for a client given its id and secret.
+     * Validates credentials via OpenBotSecretService.
+     *
+     * @param clientId Client identifier (open bot secret id)
+     * @param clientSecret Client secret plain text
+     * @param scope Optional scope/audience to embed in the token
+     * @returns AccessTokenResponseDto containing token_type, expires_in and access_token
+     * @throws UnauthorizedException if credentials invalid
+     */
     async generateAccessToken(clientId: string, clientSecret: string, scope?: string): Promise<AccessTokenResponseDto> {
         // Validate against bot credentials
         await this.openBotSecretService.validateSecretCached(clientId, clientSecret);

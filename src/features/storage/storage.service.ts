@@ -20,6 +20,15 @@ export class StorageService {
         this.storageHandle = this.getStorageHandle();
     }
 
+    /**
+     * Upload an array of incoming files and attach resulting URLs to the provided activity attachments.
+     *
+     * @param files Array of UploadDto containing filename, buffer, mimetype etc.
+     * @param conversationId Conversation id used to generate object keys
+     * @param activity Activity object whose attachments will be updated with contentUrl
+     * @throws HttpException when any individual upload fails
+private storageBucket: string;
+    private storageHandle: S3Client;     */
     async uploadToActivity(files: UploadDto[], conversationId: string, activity: Activity) {
         for (const file of files) {
             try {
@@ -38,6 +47,15 @@ export class StorageService {
         }
     }
 
+    /**
+     * Save a single file buffer to configured S3-compatible storage using AWS SDK v3 (lib-storage).
+     * Calls the provided callback with the resulting location and original filename on success.
+     *
+     * @param file UploadDto containing filename, buffer and mimetype
+     * @param conversationId Conversation identifier to include in object key path
+     * @param callback Function invoked with { location, filename } after successful upload
+     * @returns Promise<void> resolves when upload completes or rejects on failure
+     */
     async save(
         file: UploadDto,
         conversationId: string,
@@ -66,6 +84,14 @@ export class StorageService {
         }
     }
 
+    /**
+     * Generate an object key for storage using conversation id, sanitized filename and a random suffix.
+     * Ensures filename uniqueness and avoids spaces.
+     *
+     * @param filename Original file name (may be empty)
+     * @param conversationId Conversation id to prefix the key
+     * @returns string object key to use for storage (e.g. "<conv>/attachments/<name>-<id>.<ext>")
+     */
     private generateObjectKey(filename: string, conversationId: string): string {
         const id = crypto.randomBytes(8).toString('hex');
         if (filename === '') {
@@ -79,6 +105,12 @@ export class StorageService {
         return `${conversationId}/attachments/${filename}`;
     }
 
+    /**
+     * Create and return an S3Client configured from env vars.
+     * Uses endpoint, credentials and region from configuration.
+     *
+     * @returns S3Client instance configured for the target storage backend
+     */
     private getStorageHandle(): S3Client {
         return new S3Client({
             endpoint: String(this.configService.get('STORAGE_ENDPOINT') || '') || undefined,

@@ -19,6 +19,14 @@ export class OpenBotSecretService {
         private readonly cacheManager: Cache
     ) {}
 
+    /**
+     * List secrets for a given bot with optional pagination.
+     *
+     * @param botId Parent OpenBot id
+     * @param page Page index (0-based)
+     * @param pageSize Number of items per page
+     * @returns PaginatedTransform of OpenBotSecret entities to DTOs
+     */
     async findAll(
         botId: string,
         page: number,
@@ -40,6 +48,14 @@ export class OpenBotSecretService {
         );
     }
 
+    /**
+     * Find a secret by id within the specified OpenBot.
+     *
+     * @param botId Parent OpenBot id
+     * @param id Secret id to retrieve
+     * @returns OpenBotSecret entity
+     * @throws NotFoundException if secret not found
+     */
     async findByIdInOpenBot(botId: string, id: string): Promise<OpenBotSecret> {
         const openBot = await this.openBotService.findById(botId);
         // query by secret id and the related openBot id
@@ -48,7 +64,14 @@ export class OpenBotSecretService {
         throw new NotFoundException();
     }
 
-    // Never expose in controller
+    /**
+     * Cached lookup for a secret by its id. Used internally by other services for validation.
+     * Never expose in controller
+     *
+     * @param id Secret id
+     * @returns OpenBotSecret entity
+     * @throws NotFoundException if not found
+     */
     async findByIdCached(id: string): Promise<OpenBotSecret> {
         return this.cacheManager.wrap(
             id,
@@ -61,6 +84,14 @@ export class OpenBotSecretService {
         );
     }
 
+    /**
+     * Create and persist a new OpenBotSecret associated with the given bot.
+     * Generates a random plain secret, stores a hash and returns the DTO including the plain secret (once).
+     *
+     * @param botId Parent OpenBot id
+     * @param payload DTO containing description/expiresAt
+     * @returns OpenBotSecretDto containing redacted/plain secret info
+     */
     async createBotSecret(botId: string, payload: OpenBotSecretDto): Promise<OpenBotSecretDto> {
         const openBot = await this.openBotService.findById(botId);
         const botSecret = new OpenBotSecret();
@@ -73,6 +104,14 @@ export class OpenBotSecretService {
         return savedBotSecret.toDto(secretPlain);
     }
 
+    /**
+     * Update an existing secret's metadata.
+     *
+     * @param botId Parent OpenBot id
+     * @param id Secret id to update
+     * @param payload Partial DTO with updatable fields
+     * @returns Updated OpenBotSecretDto
+     */
     async update(botId: string, id: string, payload: Partial<OpenBotSecretDto>): Promise<OpenBotSecretDto> {
         const secret = await this.findByIdInOpenBot(botId, id);
         secret.description = payload.description ?? secret.description;
@@ -81,11 +120,25 @@ export class OpenBotSecretService {
         return saved.toDto();
     }
 
+    /**
+     * Delete a secret belonging to a bot.
+     *
+     * @param botId Parent OpenBot id
+     * @param id Secret id to delete
+     */
     async delete(botId: string, id: string): Promise<void> {
         const secret = await this.findByIdInOpenBot(botId, id);
         await this.openBotSecretRepository.delete({ id: secret.id });
     }
 
+    /**
+     * Validate a provided secret (plain text) against the stored hash for a given client id.
+     * Uses cached lookup for performance.
+     *
+     * @param clientId Secret id (OpenBotSecret id)
+     * @param clientSecretPlain Plain secret to validate
+     * @throws UnauthorizedException if secret does not match
+     */
     async validateSecretCached(clientId: string, clientSecretPlain: string) {
         const openBotSecret = await this.findByIdCached(clientId);
         if (openBotSecret.secretHash !== AuthorizationUtils.createHash(clientSecretPlain)) {

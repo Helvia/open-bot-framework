@@ -37,6 +37,14 @@ export class DirectlineConversationService {
         this.activityInc = new Map();
     }
 
+    /**
+     * Create a conversation for a user based on either a DirectLine token or a site secret.
+     *
+     * @param convRef ConversationReference (must contain convRef.user.id)
+     * @param authorizationHeader Authorization header value (Bearer token or secret)
+     * @returns ConversationResponse with conversationId, token, expires_in and streamUrl
+     * @throws BadRequestException when inputs invalid; UnauthorizedException when key is invalid
+     */
     async createConversation(
         convRef: ConversationReference,
         authorizationHeader: string
@@ -85,7 +93,15 @@ export class DirectlineConversationService {
         throw new UnauthorizedException();
     }
 
-    // Secure? Must check
+    /**
+     * Return conversation metadata and set the watermark used for subsequent activity numbering.
+     *
+     * @param conversationId Conversation identifier
+     * @param authorizationHeader Authorization header containing directline token
+     * @param watermark Optional watermark string that will be stored as numeric watermark
+     * @returns ConversationResponse with token and stream URL
+     * @throws BadRequestException if header missing/invalid
+     */
     getConversation(conversationId: string, authorizationHeader: string, watermark: string): ConversationResponse {
         const securityKey = AuthorizationUtils.removeBearer(authorizationHeader);
         if (!securityKey) {
@@ -101,6 +117,17 @@ export class DirectlineConversationService {
         };
     }
 
+    /**
+     * Handle a user-originated reply to a conversation. Validates token, optionally uploads files,
+     * forwards the activity to the target bot endpoint and emits the activity over websockets.
+     *
+     * @param conversationId Conversation identifier
+     * @param activity Activity payload from user
+     * @param authorizationHeader Authorization header value (Bearer token)
+     * @param files Optional array of uploaded files to persist and attach to activity
+     * @returns Promise resolving with created activity id container object
+     * @throws BadRequestException / UnauthorizedException on invalid inputs or delivery failures
+     */
     async userReplyToConversation(
         conversationId: string,
         activity: Activity,
@@ -144,6 +171,16 @@ export class DirectlineConversationService {
         }
     }
 
+    /**
+     * Process a bot-originated reply (server side). Validates server-side access token and
+     * produces an activity that is broadcast to clients (and optionally persisted).
+     *
+     * @param conversationId Conversation id
+     * @param activity Activity payload being sent by bot
+     * @param authorizationHeader Server access token header
+     * @param replyToActivity Activity id this message replies to
+     * @returns Promise resolving with { id: newActivity.id }
+     */
     async replyToActivity(
         conversationId: string,
         activity: Activity,
@@ -173,6 +210,15 @@ export class DirectlineConversationService {
         return { id: newActivity.id };
     }
 
+    /**
+     * Internal helper to create an activity object: assign id, timestamp, serviceUrl and conversation.
+     * When files are provided they are uploaded and attachments updated prior to id assignment.
+     *
+     * @param conversationId Conversation id for id generation and object pathing
+     * @param activity Activity object to enrich (mutated in place and returned)
+     * @param files Optional array of UploadDto to persist and attach
+     * @returns Enriched Activity ready to be forwarded to bot or clients
+     */
     private async createActivity(conversationId: string, activity: Activity, files?: UploadDto[]) {
         if (files) {
             await this.storageService.uploadToActivity(files, conversationId, activity);
@@ -205,6 +251,12 @@ export class DirectlineConversationService {
         return activity;
     }
 
+    /**
+     * Count number of '.' characters in a token string.
+     *
+     * @param token Token string to inspect
+     * @returns number of dot characters found
+     */
     private countDots(token: string): number {
         let count = 0;
         for (let i = 0, len = token.length; i < len; i++) {
@@ -213,6 +265,14 @@ export class DirectlineConversationService {
         return count;
     }
 
+    /**
+     * Generate the websocket stream URL for a conversation.
+     *
+     * @param conversationId Conversation id
+     * @param token Token to include as t= query param
+     * @param watermark Optional watermark query param (default '-')
+     * @returns Fully formed stream URL string
+     */
     private generateStreamUrl(conversationId: string, token: string, watermark: string = '-'): string {
         return `${this.socketUrl}/v3/directline/conversations/${conversationId}/stream?watermark=${watermark}&t=${token}`;
     }

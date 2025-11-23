@@ -17,6 +17,13 @@ export class OpenBotService {
         private readonly cacheManager: Cache
     ) {}
 
+    /**
+     * Retrieve paginated list of OpenBot entities.
+     *
+     * @param page Page index (0-based)
+     * @param pageSize Number of items per page
+     * @returns PaginatedTransform of OpenBot entities to DTOs
+     */
     async findAll(page: number, pageSize: number): Promise<PaginatedTransform<OpenBot, OpenBotDto>> {
         let selectSkip: FindManyOptions<OpenBot> = {};
         if (!isNaN(page) && !isNaN(pageSize)) {
@@ -30,6 +37,13 @@ export class OpenBotService {
         );
     }
 
+    /**
+     * Find a single OpenBot entity by its id.
+     *
+     * @param id OpenBot id
+     * @returns OpenBot entity if found
+     * @throws NotFoundException if no entity exists with provided id
+     */
     async findById(id: string): Promise<OpenBot> {
         const openBot = await this.openBotRepository.findOneBy({ id });
         if (openBot) {
@@ -38,7 +52,15 @@ export class OpenBotService {
         throw new NotFoundException();
     }
 
-    // Never expose to controller
+    /**
+     * Cached lookup for an OpenBot by handle.
+     * Wraps repository access into cache to minimize DB hits.
+     * Never expose in controller
+     *
+     * @param handle OpenBot handle string
+     * @returns OpenBot entity
+     * @throws NotFoundException if no entity exists with provided handle
+     */
     async findByHandleCached(handle: string): Promise<OpenBot> {
         return this.cacheManager.wrap(
             handle,
@@ -53,6 +75,13 @@ export class OpenBotService {
         );
     }
 
+    /**
+     * Create a new OpenBot entity from the provided DTO.
+     *
+     * @param openBotDto Data to persist
+     * @returns OpenBotDto of the saved entity
+     * @throws HttpException on DB constraint conflicts or persistence errors
+     */
     async create(openBotDto: OpenBotDto): Promise<OpenBotDto> {
         const openBot = new OpenBot();
         openBot.handle = openBotDto.handle;
@@ -71,6 +100,13 @@ export class OpenBotService {
         }
     }
 
+    /**
+     * Update an existing OpenBot entity.
+     *
+     * @param id OpenBot id to update
+     * @param openBotDto Partial DTO containing updatable fields
+     * @returns OpenBotDto updated representation
+     */
     async update(id: string, openBotDto: Partial<OpenBotDto>): Promise<OpenBotDto> {
         const openBot = await this.findById(id);
         openBot.endpoint = openBotDto.endpoint ?? openBot.endpoint;
@@ -78,6 +114,13 @@ export class OpenBotService {
         return (await this.openBotRepository.save(openBot)).toDto();
     }
 
+    /**
+     * Delete an OpenBot entity by id.
+     *
+     * @param id OpenBot id to delete
+     * @returns void
+     * @throws NotFoundException if entity does not exist
+     */
     async delete(id: string): Promise<void> {
         const openBot = await this.findById(id);
         await this.openBotRepository.delete({ id: openBot.id });

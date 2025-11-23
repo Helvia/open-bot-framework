@@ -22,6 +22,13 @@ export class DirectlineTokenService {
         this.directLineHost = String(this.configService.get<string>('DIRECTLINE_HOST') ?? '') || '';
     }
 
+    /**
+     * Create a signed JWT for DirectLine usage given the token payload and expiration.
+     *
+     * @param payload DirectLineTokenPayload containing bot, site, conv and user
+     * @param expiration Expiration in seconds
+     * @returns Signed JWT string
+     */
     createToken(payload: DirectLineTokenPayload, expiration: number): string {
         const now = Math.floor(Date.now() / 1000);
         const claims = {
@@ -34,6 +41,15 @@ export class DirectlineTokenService {
         return this.jwtService.sign(claims);
     }
 
+    /**
+     * Generate a DirectLine token when client provides a site secret.
+     * The secret is expected to be in the format "<siteId>.<hmac>" inside a Bearer header.
+     *
+     * @param authorizationHeader Authorization header value (Bearer secret)
+     * @param user Optional user id to embed into token
+     * @returns Promise<DirectLineTokenResponse> with conversationId, token and expires_in
+     * @throws BadRequestException if header malformed, UnauthorizedException if site not found
+     */
     async generateToken(authorizationHeader: string, user?: string): Promise<DirectLineTokenResponse> {
         const secret = AuthorizationUtils.removeBearer(authorizationHeader);
         if (!secret) {
@@ -67,6 +83,13 @@ export class DirectlineTokenService {
         };
     }
 
+    /**
+     * Refresh an existing DirectLine token by verifying it and issuing a new signed token.
+     *
+     * @param authorizationHeader Authorization header containing Bearer <token>
+     * @returns Promise<DirectLineTokenResponse>
+     * @throws BadRequestException if header invalid, UnauthorizedException if site missing
+     */
     async refreshToken(authorizationHeader: string): Promise<DirectLineTokenResponse> {
         const token = AuthorizationUtils.removeBearer(authorizationHeader);
         if (!token) {
@@ -95,6 +118,14 @@ export class DirectlineTokenService {
         };
     }
 
+    /**
+     * Verify a DirectLine JWT and return its payload.
+     *
+     * @param token Token string to verify
+     * @param ignoreExpiration Whether to ignore expiration during verification
+     * @returns DirectLineTokenPayload parsed from token
+     * @throws UnauthorizedException when token is invalid or verification fails
+     */
     verifyDirectLineToken(token: string, ignoreExpiration: boolean): DirectLineTokenPayload {
         try {
             return this.jwtService.verify<DirectLineTokenPayload>(token, { ignoreExpiration });
