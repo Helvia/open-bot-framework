@@ -10,6 +10,8 @@ import { HttpService } from '@nestjs/axios';
 import { lastValueFrom } from 'rxjs';
 import { DirectLineGateway } from './directline.gateway';
 import { DirectlineTokenService } from './dirtectline-token.service';
+import { StorageService } from '../storage/storage.service';
+import { UploadDto } from 'src/dto/upload.dto';
 
 @Injectable()
 export class DirectlineConversationService {
@@ -25,7 +27,8 @@ export class DirectlineConversationService {
         private readonly openBotService: OpenBotService,
         private readonly httpService: HttpService,
         private readonly socketGateway: DirectLineGateway,
-        private readonly directLineTokenService: DirectlineTokenService
+        private readonly directLineTokenService: DirectlineTokenService,
+        private readonly storageService: StorageService
     ) {
         this.expires = Number(this.configService.get<number | string>('JWT_EXPIRATION_SECONDS')) || 3600;
         // Populate host from env/config
@@ -101,7 +104,8 @@ export class DirectlineConversationService {
     async userReplyToConversation(
         conversationId: string,
         activity: Activity,
-        authorizationHeader: string
+        authorizationHeader: string,
+        files?: UploadDto[]
     ): Promise<unknown> {
         const token = AuthorizationUtils.removeBearer(authorizationHeader);
         if (!token) {
@@ -115,7 +119,7 @@ export class DirectlineConversationService {
 
         // Set bot recipient
         activity.recipient = { id: `${validPayload.bot}@${validPayload.site}`, name: validPayload.bot };
-        const newActivity = this.createActivity(conversationId, activity);
+        const newActivity = await this.createActivity(conversationId, activity, files);
 
         // Get bot for event endpoint
         const targetBot = await this.openBotService.findByHandleCached(validPayload.bot);
@@ -131,7 +135,7 @@ export class DirectlineConversationService {
             // Prepare the transcript and push to the live wire (does not require watermark)
             this.logger.verbose(`User sends type: ${newActivity.type}, text: ${newActivity.text}`);
             const transcript: Transcript = {
-                activities: [activity]
+                activities: [newActivity]
             };
             this.socketGateway.sendToConversation(conversationId, transcript);
             return { id: newActivity.id };
@@ -140,7 +144,12 @@ export class DirectlineConversationService {
         }
     }
 
-    replyToActivity(conversationId: string, activity: Activity, authorizationHeader: string, replyToActivity: string) {
+    async replyToActivity(
+        conversationId: string,
+        activity: Activity,
+        authorizationHeader: string,
+        replyToActivity: string
+    ) {
         const token = AuthorizationUtils.removeBearer(authorizationHeader);
         if (!token) {
             throw new BadRequestException('Wrong type of token provided. Provide Bearer');
@@ -152,19 +161,23 @@ export class DirectlineConversationService {
         activity.replyToId = replyToActivity;
 
         // Create the activity
-        const newActivity = this.createActivity(conversationId, activity);
+        const newActivity = await this.createActivity(conversationId, activity);
 
         // Prepare the transcript and push to the live wire (requires watermark)
         const transcript: Transcript & { watermark: string | undefined } = {
-            activities: [activity],
-            watermark: activity.type !== 'typing' ? String(this.activityInc.get(conversationId)) : undefined
+            activities: [newActivity],
+            watermark: newActivity.type !== 'typing' ? String(this.activityInc.get(conversationId)) : undefined
         };
         this.logger.verbose(`Bot replies with type: ${newActivity.type}, text: ${newActivity.text}`);
         this.socketGateway.sendToConversation(conversationId, transcript);
         return { id: newActivity.id };
     }
 
-    private createActivity(conversationId: string, activity: Activity) {
+    private async createActivity(conversationId: string, activity: Activity, files?: UploadDto[]) {
+        if (files) {
+            await this.storageService.uploadToActivity(files, conversationId, activity);
+        }
+
         // Logic is flawed. Microsoft increases activity id based on some other criterion
         if (activity.type !== 'typing') {
             if (this.activityInc.has(conversationId)) {
