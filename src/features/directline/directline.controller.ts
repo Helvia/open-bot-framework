@@ -74,7 +74,7 @@ export class DirectlineController {
         @Param('convId') convId: string,
         @Headers('authorization') securityKey: string,
         @Query('watermark') watermark: string
-    ): ConversationResponse {
+    ): Promise<ConversationResponse> {
         return this.directLineService.getConversation(convId, securityKey, watermark);
     }
 

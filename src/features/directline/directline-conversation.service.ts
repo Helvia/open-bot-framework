@@ -12,13 +12,13 @@ import { DirectLineGateway } from './directline.gateway';
 import { DirectlineTokenService } from './dirtectline-token.service';
 import { StorageService } from '../storage/storage.service';
 import { UploadDto } from 'src/dto/upload.dto';
+import { AtomicOperationsService } from '../atomicity/atomic-operations.service';
 
 @Injectable()
 export class DirectlineConversationService {
     private readonly expires: number;
     private readonly host: string;
     private readonly socketUrl: string;
-    private readonly activityInc: Map<string, number>;
     private readonly logger = new Logger(this.constructor.name);
 
     constructor(
@@ -28,13 +28,13 @@ export class DirectlineConversationService {
         private readonly httpService: HttpService,
         private readonly socketGateway: DirectLineGateway,
         private readonly directLineTokenService: DirectlineTokenService,
-        private readonly storageService: StorageService
+        private readonly storageService: StorageService,
+        private readonly atomicOperationService: AtomicOperationsService
     ) {
         this.expires = Number(this.configService.get<number | string>('JWT_EXPIRATION_SECONDS')) || 3600;
         // Populate host from env/config
         this.host = String(this.configService.get<string>('DIRECTLINE_HOST') ?? '') || '';
         this.socketUrl = String(this.configService.get<string>('DIRECTLINE_SOCKET_URL') ?? '') || '';
-        this.activityInc = new Map();
     }
 
     /**
@@ -102,13 +102,17 @@ export class DirectlineConversationService {
      * @returns ConversationResponse with token and stream URL
      * @throws BadRequestException if header missing/invalid
      */
-    getConversation(conversationId: string, authorizationHeader: string, watermark: string): ConversationResponse {
+    async getConversation(
+        conversationId: string,
+        authorizationHeader: string,
+        watermark: string
+    ): Promise<ConversationResponse> {
         const securityKey = AuthorizationUtils.removeBearer(authorizationHeader);
         if (!securityKey) {
             throw new BadRequestException('Wrong type of token provided. Provide Bearer');
         }
         this.directLineTokenService.verifyDirectLineToken(securityKey, false);
-        this.activityInc.set(conversationId, Number(watermark));
+        await this.atomicOperationService.set(conversationId, Number(watermark));
         return {
             conversationId,
             expires_in: this.expires,
@@ -203,7 +207,10 @@ export class DirectlineConversationService {
         // Prepare the transcript and push to the live wire (requires watermark)
         const transcript: Transcript & { watermark: string | undefined } = {
             activities: [newActivity],
-            watermark: newActivity.type !== 'typing' ? String(this.activityInc.get(conversationId)) : undefined
+            watermark:
+                newActivity.type !== 'typing'
+                    ? String(await this.atomicOperationService.get(conversationId))
+                    : undefined
         };
         this.logger.verbose(`Bot replies with type: ${newActivity.type}, text: ${newActivity.text}`);
         this.socketGateway.sendToConversation(conversationId, transcript);
@@ -226,13 +233,7 @@ export class DirectlineConversationService {
 
         // Logic is flawed. Microsoft increases activity id based on some other criterion
         if (activity.type !== 'typing') {
-            if (this.activityInc.has(conversationId)) {
-                const currentNumber = this.activityInc.get(conversationId)! + 1;
-                this.activityInc.set(conversationId, currentNumber);
-            } else {
-                this.activityInc.set(conversationId, 0);
-            }
-            const counter = String(this.activityInc.get(conversationId));
+            const counter = String(await this.atomicOperationService.incr(conversationId));
             const padded = counter.padStart(7, '0');
             activity.id = `${conversationId}|${padded}`;
         } else {

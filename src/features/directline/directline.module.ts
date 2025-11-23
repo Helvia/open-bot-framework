@@ -10,15 +10,18 @@ import { DirectlineAltController } from './directline-alt.controller';
 import { DirectlineTokenService } from './dirtectline-token.service';
 import { StorageModule } from '../storage/storage.module';
 import { StorageService } from '../storage/storage.service';
+import { AtomicOperationsModule } from '../atomicity/atomic-operations.module';
+import { AtomicOperationsService } from '../atomicity/atomic-operations.service';
 
 @Module({
-    imports: [WebChatModule, AuthorizationModule, HttpModule, StorageModule],
+    imports: [WebChatModule, AuthorizationModule, HttpModule, StorageModule, AtomicOperationsModule],
     providers: [
         DirectlineConversationService,
         WebChatService,
         DirectLineGateway,
         DirectlineTokenService,
-        StorageService
+        StorageService,
+        AtomicOperationsService
     ],
     controllers: [DirectlineController, DirectlineAltController]
 })

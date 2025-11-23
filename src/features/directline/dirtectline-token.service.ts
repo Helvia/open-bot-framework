@@ -17,7 +17,6 @@ export class DirectlineTokenService {
         private readonly jwtService: JwtService
     ) {
         this.expires = Number(this.configService.get<number | string>('JWT_EXPIRATION_SECONDS')) || 3600;
-        // Populate host and region from env/config
         this.region = String(this.configService.get<string>('DIRECTLINE_REGION') ?? '') || '';
         this.directLineHost = String(this.configService.get<string>('DIRECTLINE_HOST') ?? '') || '';
     }

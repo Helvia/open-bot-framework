@@ -2,15 +2,20 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { OpenBotSecretService } from '../openbotsecret/openbotsecret.service';
 import { AccessTokenResponseDto } from 'src/dto/token.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthorizationService {
     private readonly directLineHost: string;
+    private readonly expirationSeconds: number;
 
     constructor(
         private readonly jwtService: JwtService,
-        private readonly openBotSecretService: OpenBotSecretService
-    ) {}
+        private readonly openBotSecretService: OpenBotSecretService,
+        private readonly configService: ConfigService
+    ) {
+        this.expirationSeconds = Number(this.configService.get<number | string>('JWT_EXPIRATION_SECONDS')) || 3600;
+    }
 
     /**
      * Verify an access token (server-to-server) and return decoded payload.
@@ -38,11 +43,7 @@ export class AuthorizationService {
      * @throws UnauthorizedException if credentials invalid
      */
     async generateAccessToken(clientId: string, clientSecret: string, scope?: string): Promise<AccessTokenResponseDto> {
-        // Validate against bot credentials
         await this.openBotSecretService.validateSecretCached(clientId, clientSecret);
-
-        // Typical MS behavior: 1 hour expiry
-        const expiresInSeconds = 3600;
 
         const tokenPayload = {
             aud: scope || 'https://api.botframework.com/.default',
@@ -50,15 +51,14 @@ export class AuthorizationService {
             sub: clientId
         };
 
-        // Sign JWT with your secret key (HMAC 256)
         const accessToken = this.jwtService.sign(tokenPayload, {
             algorithm: 'HS256',
-            expiresIn: expiresInSeconds
+            expiresIn: this.expirationSeconds
         });
 
         return {
             token_type: 'Bearer',
-            expires_in: expiresInSeconds,
+            expires_in: this.expirationSeconds,
             access_token: accessToken
         };
     }
