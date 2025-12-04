@@ -74,9 +74,10 @@ export class DirectLineGateway implements OnModuleInit, OnModuleDestroy {
                 wsConnection.send(JSON.stringify(activityPayload));
                 return;
             }
+            this.logger.verbose(`Retrying sending to conversation ${convId} (was not registered)`);
             // Exponential retry
             await new Promise(resolve => {
-                setTimeout(resolve, 100 * i);
+                setTimeout(resolve, 1000 * i);
             });
         }
         this.logger.warn(`Could not send transcript to conversation ${convId}`);
