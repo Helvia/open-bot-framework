@@ -7,8 +7,8 @@
 
 - **HTTP Port:** 1986 (env: `PORT`, default 1986)
 - **WebSocket Port:** 1992 (env: `SOCKET_PORT`, default 1992)
-- **Base image:** none (no Dockerfile present — run directly with Node.js)
-- **Start command:** `node dist/main` (production) / `nest start --watch` (dev)
+- **Base image:** `node:22` (build stage), `node:22-slim` (runtime stage) — multi-stage Dockerfile
+- **Start command:** `node dist/src/main` (production) / `nest start --watch` (dev)
 - **Health check:** none defined
 
 ## Required Environment Variables
@@ -43,17 +43,14 @@
 
 ## Docker
 
-No Dockerfile is present in this repository. The service is run directly with Node.js.
+Multi-stage Dockerfile: `node:22` (build) and `node:22-slim` (runtime). Exposes ports 1986 (HTTP) and 1992 (WebSocket).
 
 ```bash
-# Install dependencies
-npm install
-
-# Build
-npm run build
+# Build Docker image
+docker build -t open-bot-framework .
 
 # Run (production)
-node dist/main
+node dist/src/main
 
 # Run (dev, hot reload)
 npm run start:dev

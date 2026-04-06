@@ -34,7 +34,7 @@
 
 ### OpenBotSecret
 
-> A bcrypt-hashed API secret for a bot. Used for bot-to-gateway OAuth2 client credentials auth.
+> A SHA-256 hashed API secret for a bot. Used for bot-to-gateway OAuth2 client credentials auth.
 
 | Field | Type | Required | Constraints | Notes |
 |-------|------|----------|-------------|-------|
@@ -43,7 +43,7 @@
 | `description` | string | yes | | Human label for the secret |
 | `createdAt` | timestamptz | yes | Auto-set | |
 | `expiresAt` | timestamptz | no | Nullable | Optional expiry |
-| `secretHash` | string | yes | | bcrypt hash of the secret value |
+| `secretHash` | string | yes | | SHA-256 hash of the secret value |
 | `plainReducted` | string | yes | | Redacted plain version shown in UI (e.g. `abc...xyz`) |
 
 **DTO (API response):** `OpenBotSecretDto` — exposes `secretId`, `description`, `createdAt`, `expiresAt`, `secret` (plain on creation only, otherwise `plainReducted`).
