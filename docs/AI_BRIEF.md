@@ -10,7 +10,7 @@ Implements the Microsoft Bot Framework DirectLine 3.0 protocol as a standalone N
 
 - Language: TypeScript
 - Framework: NestJS 11 + Fastify adapter
-- Key dependencies: TypeORM + PostgreSQL, ioredis, `botframework-schema`, `@nestjs/jwt`, AWS SDK v3 (S3-compatible storage), `ws` (raw WebSocket server)
+- Key dependencies: TypeORM + PostgreSQL, ioredis, `botframework-schema`, `@nestjs/jwt`, MinIO client (S3-compatible storage), `ws` (raw WebSocket server)
 
 ## Entry Points
 
@@ -25,7 +25,7 @@ Implements the Microsoft Bot Framework DirectLine 3.0 protocol as a standalone N
 | `src/features/directline/` | DirectLine 3.0 protocol: token, conversation, activity routing |
 | `src/features/authorization/` | OAuth2 client-credentials endpoint for bot-to-gateway auth |
 | `src/features/openbot/` | CRUD for registered bots (handle + HTTP endpoint) |
-| `src/features/openbotsecret/` | CRUD for bot API secrets (bcrypt-hashed) |
+| `src/features/openbotsecret/` | CRUD for bot API secrets (SHA-256 hashed) |
 | `src/features/channels/webchat/` | CRUD for webchat channel secrets (linked to a bot) |
 | `src/features/atomicity/` | Redis or in-memory atomic counter for activity watermarks |
 | `src/features/storage/` | S3-compatible file upload for conversation attachments |
@@ -51,7 +51,7 @@ Implements the Microsoft Bot Framework DirectLine 3.0 protocol as a standalone N
 ## Data Models
 
 - `OpenBot` — registered bot: `id` (uuid), `handle` (unique), `endpoint` (HTTP URL), `schemaVersion`
-- `OpenBotSecret` — bot API key: `secretHash` (bcrypt), `plainReducted`, `expiresAt`, `description`
+- `OpenBotSecret` — bot API key: `secretHash` (SHA-256), `plainReducted`, `expiresAt`, `description`
 - `WebChatChannel` — webchat site: `id`, `name`, `secret1`, `secret2`, belongs to `OpenBot`
 
 ## External Dependencies

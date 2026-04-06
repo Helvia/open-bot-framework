@@ -8,7 +8,7 @@
 | Service | Protocol | Purpose | Key calls / endpoints |
 |---------|----------|---------|----------------------|
 | Bot backends (any registered OpenBot) | HTTP POST | Forward user activity to bot endpoint | `POST <OpenBot.endpoint>` (configured per-bot in DB) |
-| S3-compatible storage | AWS SDK v3 | Store conversation file attachments | `Upload` to configured bucket |
+| S3-compatible storage | MinIO client (S3-compatible) | Store conversation file attachments | Upload to configured bucket |
 | Redis | ioredis | Atomic activity watermark counters (incr/get/set with 1-hour TTL) | Key: `<conversationId>` |
 | PostgreSQL | TypeORM | Persist bots, secrets, webchat channel registrations | `OpenBot`, `OpenBotSecret`, `WebChatChannel` entities |
 
@@ -77,7 +77,7 @@ Timeout: 5000ms
 ## Confidence
 
 - Bot backend (HTTP forward): high (explicit `httpService.post(targetBot.endpoint, ...)` with 5 s timeout)
-- S3 storage: high (AWS SDK v3 `Upload`, configured via `STORAGE_*` env vars)
+- S3 storage: high (MinIO client, configured via `STORAGE_*` env vars)
 - Redis: high (ioredis, `REDIS_URI` env var, falls back to in-memory if unavailable)
 - PostgreSQL: high (TypeORM entities, `TYPEORM_*` env vars)
 - No Bull queues, no Redis pub/sub, no Socket.IO inter-service connections detected
