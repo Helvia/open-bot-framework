@@ -41,7 +41,7 @@ import { JwtModule } from '@nestjs/jwt';
                     entities: [__dirname + '/**/*.entity{.ts,.js}'],
                     migrations: [__dirname + '/../migrations/*.js'],
                     migrationsRun: configService.get('TYPEORM_AUTORUN_MIGRATIONS') === 'true',
-                    synchronize: true,
+                    synchronize: false,
                     autoLoadEntities: true,
                     dropSchema: false
                 }) as DataSourceOptions,
