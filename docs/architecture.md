@@ -25,7 +25,7 @@ flowchart LR
         tokenSvc["DirectlineTokenService<br/>generate/refresh/verify DL token"]
         convSvc["DirectlineConversationService<br/>conversation lifecycle, activity routing"]
         botSvc["OpenBotService<br/>bot CRUD + cached lookup"]
-        secretSvc["OpenBotSecretService<br/>bcrypt hash + validate"]
+        secretSvc["OpenBotSecretService<br/>SHA-256 hash + validate"]
         webchatSvc["WebChatService<br/>channel CRUD"]
         storageSvc["StorageService<br/>S3-compatible upload"]
         atomicSvc["AtomicOperationsService<br/>activity watermark counter"]
@@ -95,6 +95,6 @@ flowchart TD
 - Two ports: HTTP (1986) for REST, separate WebSocket server (1992) for streaming.
 - `synchronize: true` in TypeORM config — schema auto-syncs on startup (dev-safe, disable in prod).
 - Atomicity backend selected at startup from `ATOMIC_OPERATIONS_IMPLEMENTATION` env: `redis` (requires Redis) or `memory` (single-instance only).
-- Bot secrets are bcrypt-hashed. `plainReducted` stores a redacted plain version for display.
+- Bot secrets are hashed with SHA-256 (via `AuthorizationUtils.createHash`), not bcrypt. `plainReducted` stores a redacted plain version for display.
 - Activity IDs follow DirectLine convention: `<conversationId>|<7-digit-zero-padded-counter>`.
 - `typing` activities get random IDs and do not increment the watermark counter.

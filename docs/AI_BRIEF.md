@@ -73,5 +73,4 @@ Ports: HTTP `1986`, WebSocket `1992` (both configurable via env).
 
 ```bash
 npm run test        # unit tests (Jest)
-npm run test:e2e    # e2e tests
 ```
