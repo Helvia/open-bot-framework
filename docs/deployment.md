@@ -8,7 +8,7 @@
 - **HTTP Port:** 1986 (env: `PORT`, default 1986)
 - **WebSocket Port:** 1992 (env: `SOCKET_PORT`, default 1992)
 - **Base image:** `node:22` (build stage), `node:22-slim` (runtime stage) — multi-stage Dockerfile
-- **Start command:** `node dist/src/main` (production) / `nest start --watch` (dev)
+- **Start command:** `node dist/main` (production) / `nest start --watch` (dev)
 - **Health check:** none defined
 
 ## Required Environment Variables
@@ -50,7 +50,7 @@ Multi-stage Dockerfile: `node:22` (build) and `node:22-slim` (runtime). Exposes 
 docker build -t open-bot-framework .
 
 # Run (production)
-node dist/src/main
+node dist/main
 
 # Run (dev, hot reload)
 npm run start:dev
