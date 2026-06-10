@@ -22,13 +22,18 @@ export class StorageService {
             throw new Error('STORAGE_BUCKET is required');
         }
 
+        const region = this.configService.get<string>('STORAGE_REGION_S3');
+        const forcePathStyle = this.configService.get<string>('STORAGE_FORCE_S3_PATH_STYLE');
+
         const url = new URL(this.endpoint);
         this.client = new MinioClient({
             endPoint: url.hostname,
             port: url.port ? parseInt(url.port) : undefined,
             useSSL: url.protocol === 'https:',
             accessKey: this.configService.get<string>('STORAGE_ACCESS_KEY') ?? '',
-            secretKey: this.configService.get<string>('STORAGE_SECRET_KEY') ?? ''
+            secretKey: this.configService.get<string>('STORAGE_SECRET_KEY') ?? '',
+            ...(region ? { region } : {}),
+            ...(forcePathStyle !== undefined ? { pathStyle: forcePathStyle === 'true' } : {})
         });
     }
 
