@@ -5,65 +5,126 @@
 
 ## Runtime
 
-- **HTTP Port:** 1986 (env: `PORT`, default 1986)
-- **WebSocket Port:** 1992 (env: `SOCKET_PORT`, default 1992)
-- **Base image:** `node:22` (build stage), `node:22-slim` (runtime stage) — multi-stage Dockerfile
-- **Start command:** `node dist/main` (production) / `nest start --watch` (dev)
-- **Health check:** none defined
+- **HTTP port:** `1986`. From `process.env.PORT` with a literal `1986` fallback in `src/main.ts` (`app.listen(process.env.PORT ?? 1986, '0.0.0.0')`).
+- **WebSocket port:** `SOCKET_PORT`, no fallback. `DirectLineGateway` opens its own `ws.Server({ port: SOCKET_PORT })` in `onModuleInit`, separate from the Fastify HTTP server. If `SOCKET_PORT` is unset, `Number(undefined)` is `NaN` and `ws` binds a random free port.
+- **Base image:** `node:22` (two build stages: `client-builder`, `builder`) -> `node:22-slim` (`production` stage).
+- **Start command:** `node dist/src/main` (Dockerfile `CMD`). Dev: `npm run start:dev`.
+- **Health check:** none. No `/health` route, no `HEALTHCHECK` in the Dockerfile, no healthcheck on the `app` service in `docker-compose.yml`.
+
+The HTTP adapter is Fastify, not Express. CORS is `origin: true` (reflects any origin) for `GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS`.
+
+A React + Vite + Tailwind admin SPA lives in `client/` (npm workspace `openbot-ui`). It is built separately and served by `ServeStaticModule` from `<cwd>/client/dist` with `fallthrough: true` so client-side routes resolve to the SPA index. The Docker `production` stage copies `client/dist` from the `client-builder` stage, so the SPA ships inside the same image and is served off the HTTP port.
 
 ## Required Environment Variables
 
-| Variable | Example | Description |
-|----------|---------|-------------|
-| PORT | 1986 | HTTP listen port |
-| SOCKET_PORT | 1992 | WebSocket server port |
-| DIRECTLINE_HOST | localhost.home | Hostname used in DirectLine stream URLs |
-| DIRECTLINE_REGION | eu | Region tag |
-| DIRECTLINE_SOCKET_URL | wss://localhost:1992 | WebSocket base URL returned to clients |
-| JWT_SECRET | (secret) | JWT signing secret for DirectLine tokens |
-| JWT_EXPIRATION_SECONDS | 3600 | DirectLine token lifetime in seconds |
-| TYPEORM_CONNECTION | postgres | DB driver (postgres) |
-| TYPEORM_HOST | localhost | PostgreSQL host |
-| TYPEORM_PORT | 5432 | PostgreSQL port |
-| TYPEORM_USERNAME | postgres | PostgreSQL user |
-| TYPEORM_PASSWORD | (secret) | PostgreSQL password |
-| TYPEORM_DATABASE | obf | PostgreSQL database name |
-| TYPEORM_ENTITIES | dist/**/*.entity.js | TypeORM entity glob |
-| TYPEORM_MIGRATIONS | dist/migrations/*.js | TypeORM migrations glob |
-| TYPEORM_MIGRATIONS_DIR | migrations | Migrations source directory |
-| TYPEORM_AUTORUN_MIGRATIONS | true | Run migrations on startup |
-| STORAGE_ACCESS_KEY | (secret) | S3-compatible access key |
-| STORAGE_SECRET_KEY | (secret) | S3-compatible secret key |
-| STORAGE_BUCKET | | S3 bucket name |
-| STORAGE_REGION_S3 | us-east-1 | S3 region (AWS S3 only) |
-| STORAGE_FORCE_S3_PATH_STYLE | true | Force path-style URLs (MinIO/custom endpoints) |
-| STORAGE_ENDPOINT | | S3-compatible endpoint URL (leave unset for AWS) |
-| REDIS_URI | redis://localhost:6379 | Redis connection URI |
-| ATOMIC_OPERATIONS_IMPLEMENTATION | redis | Counter backend: `redis` or `memory` |
+Config is loaded by `@nestjs/config` from `['.env.local', '.env']`, in that order, with real process env taking precedence.
+
+**Server**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| PORT | no | HTTP listen port, defaults to `1986` |
+| SOCKET_PORT | yes | DirectLine WebSocket server port. No default; leaving it unset binds a random port |
+
+**DirectLine**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| DIRECTLINE_HOST | yes | Host used when building DirectLine URLs returned to clients |
+| DIRECTLINE_REGION | yes | Region tag echoed in DirectLine token responses |
+| DIRECTLINE_SOCKET_URL | yes | WebSocket base URL handed to clients for the stream connection |
+| JWT_SECRET | yes | Signing secret for DirectLine and admin tokens |
+| JWT_EXPIRATION_SECONDS | yes | DirectLine token lifetime |
+
+**Admin auth**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| ADMIN_USERNAME | yes | Admin UI username |
+| ADMIN_PASSWORD | yes | **bcrypt hash** of the admin password, not the plaintext |
+
+**Database (TypeORM)**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| TYPEORM_CONNECTION | yes | Driver name passed straight to TypeORM. `postgres` and `mysql` are both installed and both used in practice |
+| TYPEORM_HOST | yes | DB host |
+| TYPEORM_PORT | yes | DB port |
+| TYPEORM_USERNAME | yes | DB user |
+| TYPEORM_PASSWORD | yes | DB password |
+| TYPEORM_DATABASE | yes | DB name |
+| TYPEORM_AUTORUN_MIGRATIONS | no | Compared against the string `'true'`; sets TypeORM `migrationsRun`. There are no migration files, so this is a no-op today |
+| TYPEORM_ENTITIES | no | Present in env files; the code hardcodes the entity glob and never reads this |
+| TYPEORM_MIGRATIONS | no | Same: the migrations glob is hardcoded |
+| TYPEORM_MIGRATIONS_DIR | no | Only meaningful for the `migration:generate` CLI script |
+
+**Object storage (MinIO client)**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| STORAGE_ENDPOINT | yes | Full URL of the S3-compatible endpoint. `StorageService` throws `STORAGE_ENDPOINT is required` at construction if empty, including for AWS S3 |
+| STORAGE_BUCKET | yes | Bucket name; also throws when empty |
+| STORAGE_ACCESS_KEY | yes | Access key |
+| STORAGE_SECRET_KEY | yes | Secret key |
+| STORAGE_REGION_S3 | no | Passed through as the MinIO client `region` when set |
+| STORAGE_FORCE_S3_PATH_STYLE | no | `'true'` enables path-style addressing |
+
+**Redis**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| REDIS_URI | no | ioredis connection URI for the atomic counter backend |
+| ATOMIC_OPERATIONS_IMPLEMENTATION | no | `redis` or `memory`; falls back to in-memory when Redis is unavailable |
 
 ## Docker
 
-Multi-stage Dockerfile: `node:22` (build) and `node:22-slim` (runtime). Exposes ports 1986 (HTTP) and 1992 (WebSocket).
-
 ```bash
-# Build Docker image
+# Build (builds the SPA, the Nest server, then prunes dev deps)
 docker build -t open-bot-framework .
 
-# Run (production)
-node dist/main
-
-# Run (dev, hot reload)
-npm run start:dev
+# Run the full stack: app + postgres + redis
+docker compose up --build
 ```
+
+`docker-compose.yml` defines three services:
+
+- `app` — built from the local Dockerfile, publishes `1986:1986` and `1992:1992`, loads `.env` via `env_file` and overrides `TYPEORM_HOST`, `TYPEORM_PASSWORD`, and `REDIS_URI` for the in-compose services.
+- `postgres` — `postgres:16-alpine`, database `obf`, named volume `postgres_data`, `pg_isready` healthcheck.
+- `redis` — `redis:7-alpine`, named volume `redis_data`, `redis-cli ping` healthcheck.
+
+`app` waits on both healthchecks via `depends_on: condition: service_healthy`. Note the compose stack does not set `STORAGE_*`, so attachment uploads fail there unless `.env` supplies them.
 
 ## CI/CD
 
-No CI/CD configuration is present in this repository (no `.github/workflows/`). Deployment is managed externally.
+- **Workflows:** `.github/workflows/ci.yml` (name: `pipeline`).
+- **Trigger:** push to `main`, `staging`, or `develop`. No PR trigger.
+- **Steps:**
+  1. `test` job: Node 22 with npm cache and the GitHub Packages registry, `npm ci`, `npm test` (Jest). This is the only repo in this group whose pipeline runs tests.
+  2. `audit` job: SonarQube scan, version from `npm-get-version-action`.
+  3. `build` job: AWS credentials (`eu-central-1`), ECR login, `docker build`/`docker push` tagged with the short commit SHA, then branch-conditional `kubectl set image` and `kubectl rollout status --timeout=600s`.
+- **Deploy target:** AWS EKS via `kodermax/kubectl-aws-eks` (kubectl `v1.22.0`), ECR repository `open-bot-framework`. Namespaces: `helvia-dev` (develop), `helvia-stg` (staging), `helvia` (main).
+- **Secrets referenced (names only):** `PAT_TOKEN` (as `NODE_AUTH_TOKEN` for the private registry), `SONAR_TOKEN`, `SONAR_HOST_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `KUBE_CONFIG_DATA_NEW`.
+
+## Local Development
+
+`scripts/aq-local-dev.sh` runs the service natively:
+
+```bash
+npm run build      # BUILD_CMD
+node dist/src/main # CMD
+npm run start:dev  # DEV_CMD: nest --watch plus a Vite watch build of client/
+```
+
+`scripts/local-dev/generate-env.sh` writes `.env.local.dev` with `PORT=$OBF_PORT` (base `4218`), `SOCKET_PORT=$OBF_SOCKET_PORT` (base `4219`), a bcrypt-hashed local admin password, MinIO credentials for the shared local MinIO, and — importantly — `TYPEORM_CONNECTION=mysql` pointing at the shared platform MySQL container. Local dev therefore exercises the MySQL driver while `docker-compose.yml` and the committed `.env` use PostgreSQL.
+
+The Nest `ConfigModule` reads `.env.local` and `.env`, not `.env.local.dev`, so the harness exports the generated values into the process environment rather than relying on file loading.
 
 ## Notes
 
-- Two ports are required: HTTP (`PORT`) and WebSocket (`SOCKET_PORT`). Both must be accessible to clients.
-- PostgreSQL is the only supported database (`TYPEORM_CONNECTION=postgres`). Schema sync is handled via TypeORM migrations run automatically on startup.
-- Redis is optional: if `ATOMIC_OPERATIONS_IMPLEMENTATION=memory` (or Redis is unreachable), the service falls back to an in-memory atomic counter. This is not safe for multi-instance deployments.
-- S3 storage is used for conversation attachment uploads. All three of `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`, and `STORAGE_BUCKET` must be set for uploads to work. `STORAGE_ENDPOINT` is only needed for non-AWS S3-compatible services (MinIO, Wasabi, DigitalOcean Spaces).
-- `ormconfig.ts` loads `.env.local` (not `.env`) for migration CLI commands. Set up a local `.env.local` for running migrations manually.
+- **Not PostgreSQL-only.** Both `pg` and `mysql2` are dependencies and `TYPEORM_CONNECTION` is passed through untouched (`src/app.module.ts`, `ormconfig.ts`). PostgreSQL is what compose and the committed `.env` use; local dev uses MySQL.
+- **`synchronize: true` with no migrations.** `src/app.module.ts` hardcodes `synchronize: true`, so TypeORM alters the live schema from entity metadata on every boot. There is no `migrations/` directory, so `migrationsRun` and `TYPEORM_AUTORUN_MIGRATIONS` currently do nothing. Running `synchronize` against a shared or production database risks destructive column changes; introducing migrations means turning it off first.
+- **`npm run start:prod` is broken.** It runs `node dist/main`, but `nest build` emits `dist/src/main.js` (the compile root spans the repo root because `ormconfig.ts` sits outside `src/`). The Dockerfile `CMD` and the local-dev command both correctly use `dist/src/main`; only the package script is wrong.
+- **Object storage uses the `minio` client, not `@aws-sdk`.** `StorageService` parses `STORAGE_ENDPOINT` with `new URL()` and derives `endPoint`, `port`, and `useSSL` from it, which is why the endpoint is mandatory for every backend including AWS S3.
+- **Two listeners, two ports.** The Fastify HTTP server and the `ws.Server` are independent. Any ingress, service definition, or firewall rule has to expose both, and a health probe on the HTTP port says nothing about the WebSocket server.
+- **`.env` is committed.** It holds local placeholder values (`JWT_SECRET='safe-256-bit'`, empty storage keys, empty DB password) plus a real bcrypt hash in `ADMIN_PASSWORD`. Nothing there is a live production credential, but the file being tracked means any accidental commit of real values would ship silently. `docker-compose.yml` loads it via `env_file`.
+- `ormconfig.ts` loads only `.env.local` (via `dotenv`) for the `migration:*` and `schema:log` CLI scripts, so a plain `.env` is not enough for those commands.
