@@ -13,8 +13,8 @@ replies back through the Bot Connector-shaped `/v3/conversations/...` routes. Th
 
 | Service | Protocol | Purpose | Key calls / queues |
 |---------|----------|---------|-------------------|
-| hbf-bot (or any registered OpenBot backend) | HTTP POST | Forward the user's activity to the bot | `POST <OpenBot.endpoint>` -- the endpoint is a **per-bot database column** (`src/entities/openbot.entity.ts:23`), not an env var. 5000 ms timeout, **no auth header** (`directline-conversation.service.ts:161-164`). Confidence: high |
-| Browser widget | WebSocket (server push) | Deliver `Transcript` payloads to the connected client | Own `ws.Server` on `SOCKET_PORT` (default 1992), path `/v3/directline/conversations/:convId/stream?t=<token>` (`src/features/directline/directline.gateway.ts:20-45`). Confidence: high |
+| hbf-bot (or any registered OpenBot backend) | HTTP POST | Forward the user's activity to the bot | `POST <OpenBot.endpoint>` -- the endpoint is a **per-bot database column** (`src/entities/openbot.entity.ts:23`), not an env var. 5000 ms timeout, **no auth header** (`directline-conversation.service.ts:160-163`). Confidence: high |
+| Browser widget | WebSocket (server push) | Deliver `Transcript` payloads to the connected client | Own `ws.Server` on `SOCKET_PORT` (default 1992), path `/v3/directline/conversations/:convId/stream?t=<token>` (`src/features/directline/directline.gateway.ts:33-78`). Confidence: high |
 
 For hbf-bot deployments, `OpenBot.endpoint` typically points at `POST /api/webchat-events` on hbf-bot (seeded by
 `seed-obf.sh`). OBF itself does not know or care what is behind the URL.
@@ -42,7 +42,7 @@ For hbf-bot deployments, `OpenBot.endpoint` typically points at `POST /api/webch
 | WS | `{DIRECTLINE_SOCKET_URL}/v3/directline/conversations/:convId/stream?t=<token>` on `SOCKET_PORT` | Direct Line token in the `t` query param; conversation id in the path must match the token's `conv` claim |
 | POST | `/v3/conversations/:convId/activities/:activityId` | `Authorization: Bearer <OAuth2 access token>` (bot reply) |
 | POST | `/v3/conversations/:convId/activities` | `Authorization: Bearer <OAuth2 access token>` (bot reply, no activity id) |
-| POST | `/oauth2/v2.0/token` | Body `{ grant_type: "client_credentials", client_id: <botHandle>, client_secret: <plainSecret>, scope? }` |
+| POST | `/oauth2/v2.0/token` | Body `{ grant_type: "client_credentials", client_id: <OpenBotSecret id>, client_secret: <plainSecret>, scope? }` |
 | POST | `/api/login` | Body `{ username, password }`; returns an admin JWT |
 | GET/POST/PUT/DELETE | `/api/bots`, `/api/bots/:id` | `JwtAuthGuard` (Bearer admin JWT) |
 | GET/POST/PUT/DELETE | `/api/bots/:botId/credentials[/:id]` | `JwtAuthGuard` |
@@ -75,7 +75,7 @@ The WebSocket server pushes `Transcript` objects (`{ activities: [...] }`) as JS
 | Target | Auth | Env vars |
 |--------|------|----------|
 | Bot backend (`POST <OpenBot.endpoint>`) | **None** -- no header is attached; 5 s timeout | None. The URL is the `endpoint` column of the `open_bot` row, resolved via `findByHandleCached`. |
-| WebSocket clients | Direct Line token verified at connect | `SOCKET_PORT` (default 1992), `DIRECTLINE_SOCKET_URL` (used to build the advertised `streamUrl`) |
+| WebSocket clients | Direct Line token verified at connect; a bad or missing token closes the socket with code 1008 | `SOCKET_PORT` (default 1992), `DIRECTLINE_SOCKET_URL` (used to build the advertised `streamUrl`) |
 | PostgreSQL (TypeORM) | DB credentials | `TYPEORM_CONNECTION`, `TYPEORM_HOST`, `TYPEORM_PORT`, `TYPEORM_USERNAME`, `TYPEORM_PASSWORD`, `TYPEORM_DATABASE`, `TYPEORM_AUTORUN_MIGRATIONS` |
 | Redis (activity watermark counters, 1 h TTL, key = conversation id) | `REDIS_URI` | `REDIS_URI`, `ATOMIC_OPERATIONS_IMPLEMENTATION` (falls back to an in-process implementation) |
 | S3-compatible object storage (attachment uploads) | Access/secret key | `STORAGE_ENDPOINT`, `STORAGE_BUCKET`, `STORAGE_REGION_S3`, `STORAGE_FORCE_S3_PATH_STYLE`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY` |
@@ -84,7 +84,7 @@ The WebSocket server pushes `Transcript` objects (`{ activities: [...] }`) as JS
 ### Scaling constraint
 
 The WebSocket gateway keeps live sockets in a plain in-process `Map` keyed by conversation id
-(`directline.gateway.ts:13`). There is no pub/sub fan-out, so **OBF is single-instance only**: a second replica
+(`directline.gateway.ts:23`). There is no pub/sub fan-out, so **OBF is single-instance only**: a second replica
 would not be able to push replies to a conversation whose socket landed on the first one.
 
 ## Flows Involving This Service

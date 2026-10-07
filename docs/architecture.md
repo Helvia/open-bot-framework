@@ -100,7 +100,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["POST /v3/conversations/:id/activities[/:actId]"] --> B["Verify access token<br/>(signature only)"]
+    A["POST /v3/conversations/:id/activities[/:actId]"] --> B["Verify bot token<br/>(any live bot credential)"]
     B --> C["Set replyToId when :actId present"]
     C --> D["Increment watermark counter<br/>(skipped for typing)"]
     D --> E["Enrich: timestamp, serviceUrl, conversation"]
@@ -114,10 +114,10 @@ flowchart TD
 - The same HTTP port serves the React admin SPA from `client/dist` via `ServeStaticModule` with `fallthrough: true` (required for Fastify's static loader to serve the SPA index for client-side routes).
 - The DB driver comes from `TYPEORM_CONNECTION`: `postgres` in `.env` and `docker-compose.yml`, `mysql` in HBF local dev. `synchronize: true` is always on, so the schema auto-syncs at startup and the `migrations/` directory does not exist yet.
 - Nothing is persisted per conversation or per activity. Conversations live only in the JWT (`conv` claim) plus the counter key; activity history is not stored, so `watermark`-based replay is not supported.
-- WebSocket auth: the gateway parses `?t=<DirectLine token>`, verifies it ignoring expiry, and requires the path to be `/v3/directline/conversations/<conv>/stream` with `conv` matching the token claim. Sockets are held in a plain `Map`, one per conversation, and are never removed on close, so this is single-instance only.
+- WebSocket auth: the gateway requires `?t=<DirectLine token>`, verifies it (expiry included), and requires the path to be `/v3/directline/conversations/<conv>/stream` with `conv` matching the token claim. A missing or bad token gets an `{ error }` frame and a close with code 1008. Sockets are held in a plain `Map`, one per conversation, and removed on close unless a newer socket has replaced them. The map is process-local, so this is single-instance only.
 - `sendToConversation` retries three times with 1s/2s/3s sleeps if the socket is not registered yet, then logs a warning and drops the transcript.
 - Atomicity backend is chosen once at boot from `ATOMIC_OPERATIONS_IMPLEMENTATION`; Redis keys carry a 1h TTL, and a failed Redis connect silently falls back to the in-memory manager (documented as emergency-only).
 - Activity ids follow the DirectLine convention `<conversationId>|<7-digit counter>`; `typing` activities get a random suffix instead and neither increment nor carry a watermark.
 - Bot client secrets are SHA-256 hashed (`AuthorizationUtils.createHash`), not bcrypt. Only the admin password uses bcrypt. `plainReducted` keeps the first 3 characters for display.
-- All three token types (admin, client-credentials, DirectLine) are signed with the same `JWT_SECRET`, and `verifyAccessToken` checks only the signature, so the bot-reply endpoints accept any token this service issued.
+- All three token types (admin, client-credentials, DirectLine) are signed with the same `JWT_SECRET`, so each verify function checks claims to refuse the other two types. The bot-reply endpoints accept a bot token from any live bot credential; the token is not tied to the bot that owns the conversation.
 - `StorageService` builds its MinIO client in the constructor and throws when `STORAGE_ENDPOINT` or `STORAGE_BUCKET` is missing, which aborts application boot.

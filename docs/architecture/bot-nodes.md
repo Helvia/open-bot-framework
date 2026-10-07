@@ -66,7 +66,7 @@ A webchat site linked to a bot. Holds two rotating secrets for client auth.
 
 ## Token Types
 
-Two distinct JWT types flow through the system.
+Three JWT types flow through the system, all signed with `JWT_SECRET`. Each verify function tells them apart by claims: DirectLine tokens need `conv` and `site`, admin tokens need `role: admin`, and bot tokens have neither.
 
 ### DirectLine Token (client-facing)
 Issued to the webchat widget. Signed with `JWT_SECRET`.
@@ -84,8 +84,17 @@ Issued to the bot backend via OAuth2 client credentials. Signed with `JWT_SECRET
 
 Payload fields:
 - `aud` — scope (default `https://api.botframework.com/.default`)
-- `iss` — `DIRECTLINE_HOST`
+- `iss` — meant to be `DIRECTLINE_HOST`, but never set, so it is `undefined`
 - `sub` — `client_id` (OpenBotSecret id)
+
+Accepted on the bot-reply routes only while `sub` is an existing, unexpired `OpenBotSecret`. It is not tied to a bot: any live credential can post into any conversation.
+
+### Admin Token
+Issued by `POST /api/login`. Signed with `JWT_SECRET`.
+
+Payload fields:
+- `sub` — `ADMIN_USERNAME`
+- `role` — `admin`
 
 ---
 
@@ -119,6 +128,7 @@ sequenceDiagram
     W->>DL: POST /v3/directline/tokens/generate\nAuthorization: Bearer <siteId>.<hmac>
     DL->>TS: generateToken(secret)
     TS->>DB: findByIdCached(siteId) → WebChatChannel + OpenBot
+    TS->>TS: compare full secret to secret1 / secret2 (constant time)
     TS-->>DL: DirectLineTokenResponse {conversationId, token, expires_in}
     DL-->>W: 200 {conversationId, token, expires_in}
 ```
@@ -153,7 +163,7 @@ sequenceDiagram
 
     W->>DL: POST /v3/directline/conversations/:id/activities\nBody: Activity\nAuthorization: Bearer <token>
     DL->>CS: userReplyToConversation(convId, activity, header)
-    CS->>CS: verifyDirectLineToken → validate conv matches token
+    CS->>CS: verifyConversationToken → conv must match :id
     CS->>Atomic: incr(conversationId) → counter
     CS->>CS: enrich activity (id, timestamp, serviceUrl, conversation)
     CS->>Bot: POST <openBot.endpoint> {activity JSON}
@@ -174,7 +184,7 @@ sequenceDiagram
 
     Bot->>Alt: POST /v3/conversations/:convId/activities/:actId\nAuthorization: Bearer <access_token>
     Alt->>CS: replyToActivity(convId, activity, header, actId)
-    CS->>Auth: verifyAccessToken(token)
+    CS->>Auth: verifyBotToken(token)
     CS->>CS: set activity.replyToId = actId
     CS->>Atomic: incr(conversationId) → watermark
     CS->>CS: enrich activity (id, timestamp, serviceUrl, conversation)
@@ -208,6 +218,7 @@ sequenceDiagram
     participant S3 as StorageService (S3)
 
     W->>DL: POST /v3/directline/conversations/:id/upload\nmultipart: {activity part, file parts}
+    DL->>CS: verifyConversationToken(convId, header)
     DL->>DL: parse multipart (activity JSON + file buffers)
     DL->>CS: userReplyToConversation(convId, activity, header, files)
     CS->>S3: uploadToActivity(files, convId, activity)
@@ -225,9 +236,12 @@ independently from the HTTP server. It maintains a `Map<conversationId, WebSocke
 
 **Connection handshake:**
 1. Client connects to `wss://<host>/v3/directline/conversations/<convId>/stream?watermark=<w>&t=<token>`
-2. Gateway verifies the DirectLine JWT (`t` param).
+2. Gateway verifies the DirectLine JWT (`t` param), expiry included.
 3. Validates URL `convId` matches `token.conv`.
 4. Registers socket in `socketMeta` map under `convId`.
+5. If step 2 or 3 fails, or `t` is missing, it sends `{ error: <message> }` and closes with code 1008.
+
+**Closing:** on `close`, the entry is removed from `socketMeta` only if it still points to this socket. A newer socket for the same conversation stays registered.
 
 **Sending:**
 - `sendToConversation(convId, transcript)` looks up the socket and calls `ws.send(JSON.stringify(transcript))`.
@@ -253,7 +267,7 @@ Activity counter keyed by `conversationId`. Selected at startup via `ATOMIC_OPER
 |---|---|---|
 | `PORT` | 1986 | HTTP server port |
 | `SOCKET_PORT` | 1992 | WebSocket server port |
-| `JWT_SECRET` | (required) | Signs both token types |
+| `JWT_SECRET` | (required) | Signs all three token types |
 | `JWT_EXPIRATION_SECONDS` | 3600 | Token lifetime in seconds |
 | `DIRECTLINE_HOST` | (required) | Used in token `iss`/`aud` and `serviceUrl` |
 | `DIRECTLINE_SOCKET_URL` | (required) | Base URL for `streamUrl` construction |
@@ -274,7 +288,7 @@ Activity counter keyed by `conversationId`. Selected at startup via `ATOMIC_OPER
 
 In-memory cache (NestJS `CacheModule`) with a 10-second TTL is used for:
 - `OpenBot` by handle (`findByHandleCached`)
-- `OpenBotSecret` by id (`findByIdCached`, `validateSecretCached`)
+- `OpenBotSecret` by id (`findByIdCached`, `findValidByIdCached`, `validateSecretCached`)
 - `WebChatChannel` by id (`findByIdCached`, `existsByIdCached`)
 
 Cache key for WebChatChannel with relations: `webchat:<id>:<relation1>,<relation2>`

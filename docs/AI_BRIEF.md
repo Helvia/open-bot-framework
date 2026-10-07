@@ -52,7 +52,7 @@ Implements the Microsoft Bot Framework DirectLine 3.0 protocol as a standalone N
 | POST | `/v3/directline/tokens/generate` | Bearer webchat secret (`<siteId>.<random>`) | Issue DirectLine token + conversation id |
 | POST | `/v3/directline/tokens/refresh` | Bearer DirectLine token | Re-issue DirectLine token |
 | POST | `/v3/directline/conversations` | Bearer secret or DirectLine token | Create conversation, returns `streamUrl` |
-| GET | `/v3/directline/conversations/:convId?watermark=` | Bearer DirectLine token | Conversation metadata + `streamUrl`; **sets** the watermark counter |
+| GET | `/v3/directline/conversations/:convId?watermark=` | Bearer DirectLine token for this `convId` | Conversation metadata + `streamUrl`; **sets** the watermark counter when `watermark` is all digits |
 | POST | `/v3/directline/conversations/:convId/activities` | Bearer DirectLine token | User sends an activity |
 | POST | `/v3/directline/conversations/:convId/upload` | Bearer DirectLine token | Multipart upload; parts named `activity` (JSON) and `file` |
 | POST | `/v3/conversations/:convId/activities/:activityId` | Bearer access token | Bot replies to a specific activity (sets `replyToId`) |
@@ -65,13 +65,13 @@ Implements the Microsoft Bot Framework DirectLine 3.0 protocol as a standalone N
 ## Data Models
 
 - `OpenBot` — registered bot backend: `id` (uuid), `handle` (unique, `IDX_OpenBot_handle`), `endpoint` (HTTP URL the gateway POSTs activities to), `schemaVersion` (default `v1.3`; `create()` overrides with `V1.3`), `createdAt`, `updatedAt`
-- `OpenBotSecret` — client credential for a bot: `id` (uuid, used as `client_id`), `openBot` (FK, cascade delete), `description`, `secretHash` (SHA-256 hex of a 40-char random string), `plainReducted` (first 3 chars, for display), `expiresAt` (nullable, **stored but never enforced**), `createdAt`
+- `OpenBotSecret` — client credential for a bot: `id` (uuid, used as `client_id`), `openBot` (FK, cascade delete), `description`, `secretHash` (SHA-256 hex of a 40-char random string), `plainReducted` (first 3 chars, for display), `expiresAt` (nullable; once past it, the credential cannot mint tokens and its bot tokens are refused), `createdAt`
 - `WebChatChannel` — webchat site: `id` (11-char random string, **not** a UUID), `openBot` (FK, cascade delete), `name`, `secret1`, `secret2` (both `<channelId>.<base64url 32 bytes>`, indexed), `createdAt`
 
 Three JWT flavours, all signed with the same `JWT_SECRET` (HS256):
 
-- Admin token — `{ sub: username }`, guards `/api/bots**`
-- Access token — `{ sub: clientId, aud: scope ?? 'https://api.botframework.com/.default' }`, used by bot backends on `/v3/conversations/...`
+- Admin token — `{ sub: username, role: 'admin' }`, guards `/api/bots**`
+- Access token — `{ sub: clientId, aud: scope ?? 'https://api.botframework.com/.default' }`, used by bot backends on `/v3/conversations/...`; `sub` must be a live, unexpired credential
 - DirectLine token — `{ bot, site, conv, user, iss/aud: https://<DIRECTLINE_HOST>/ }`, used by the widget
 
 ## External Dependencies
@@ -96,7 +96,7 @@ Seed the platform to route through OBF instead of Microsoft DirectLine: `./scrip
 ## Tests
 
 ```bash
-npm run test        # Jest; currently only src/sanity.spec.ts
+npm run test        # Jest; unit specs for the auth, DirectLine token, conversation, controller, gateway and credential services
 npm run lint        # ESLint flat config (eslint.config.mjs) --fix
 npm run build       # nest build -> dist/src/main.js
 ```
@@ -107,7 +107,7 @@ CI (`.github/workflows/ci.yml`) runs `npm test`, a SonarQube scan, then builds a
 
 - `package.json` `start:prod` is `node dist/main`, but `nest build` emits `dist/src/main.js` (because `ormconfig.ts` sits outside `src/`). The Dockerfile is correct (`node dist/src/main`); the npm script is not.
 - The plain `.env` leaves `STORAGE_ENDPOINT` commented out, so booting with it alone throws `STORAGE_ENDPOINT is required` from `StorageService`.
-- `cacheManager.wrap(key, fn, 10)` — cache-manager v7 measures TTL in **milliseconds**, so these caches live ~10 ms. Cache keys are also unprefixed raw ids (`handle`, secret id, channel id) in one global store.
+- cache-manager v7 measures TTL in **milliseconds**, so the cached lookups pass `10_000` (10 s). Most cache keys are unprefixed raw ids (bot `handle`, secret id, channel id for `existsByIdCached`) in one global store; only `WebChatService.findByIdCached` uses a `webchat:` prefix.
 - `WebChatController` validates `:id` with `ParseUUIDPipe`, but channel ids are 11-char random strings, so per-channel GET/PATCH/DELETE reject real ids.
-- The multipart upload loop only inspects parts where `part.type === 'file'`; the `activity` JSON must be sent as a file part, not a plain field. The `userId` query param is accepted and ignored.
-- All three token types share one `JWT_SECRET` and `verifyAccessToken` only checks the signature, so tokens are not role-separated.
+- The multipart upload loop only inspects parts where `part.type === 'file'`; the `activity` JSON must be sent as a file part, not a plain field. The `userId` query param is accepted and ignored. The token is checked before any part is read. An `activity` part that is not JSON is a 400; a file over 10 MB is a 413.
+- All three token types share one `JWT_SECRET`, so `verifyAdminToken`, `verifyBotToken` and `verifyDirectLineToken` tell them apart by claims (`role`, `conv`, `site`). A bot token is not tied to a bot: any live bot credential can post into any conversation.
