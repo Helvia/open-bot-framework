@@ -80,8 +80,25 @@ export class OpenBotSecretService {
                 if (secret) return secret;
                 throw new NotFoundException();
             },
-            10
+            10_000
         );
+    }
+
+    /**
+     * Cached lookup for a secret that has not expired.
+     * Never expose in controller
+     *
+     * @param id Secret id
+     * @returns OpenBotSecret entity
+     * @throws NotFoundException if not found, UnauthorizedException if expired
+     */
+    async findValidByIdCached(id: string): Promise<OpenBotSecret> {
+        const openBotSecret = await this.findByIdCached(id);
+        // The cache may hand back a serialized date, so normalize before comparing
+        if (openBotSecret.expiresAt && new Date(openBotSecret.expiresAt).getTime() <= Date.now()) {
+            throw new UnauthorizedException('Secret expired');
+        }
+        return openBotSecret;
     }
 
     /**
@@ -140,7 +157,7 @@ export class OpenBotSecretService {
      * @throws UnauthorizedException if secret does not match
      */
     async validateSecretCached(clientId: string, clientSecretPlain: string) {
-        const openBotSecret = await this.findByIdCached(clientId);
+        const openBotSecret = await this.findValidByIdCached(clientId);
         if (openBotSecret.secretHash !== AuthorizationUtils.createHash(clientSecretPlain)) {
             throw new UnauthorizedException('Wrong secret provided');
         }
