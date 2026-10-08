@@ -53,7 +53,7 @@ export class DirectlineConversationService {
         if (!securityKey) {
             throw new BadRequestException('Wrong type of token provided. Provide Bearer');
         }
-        if (!convRef.user?.id) {
+        if (!convRef?.user?.id) {
             throw new BadRequestException('No user provided');
         }
 
@@ -61,7 +61,7 @@ export class DirectlineConversationService {
         const dots = this.countDots(securityKey);
         // JWT token (need to avoid the costly verify method)
         if (dots === 2) {
-            const validPayload = this.directLineTokenService.verifyDirectLineToken(securityKey, false);
+            const validPayload = this.directLineTokenService.verifyDirectLineToken(securityKey);
             const newPayload: DirectLineTokenPayload = {
                 bot: validPayload.bot,
                 site: validPayload.site,
@@ -81,7 +81,7 @@ export class DirectlineConversationService {
 
         // Secret provided
         if (dots === 1) {
-            const tokenResponse = await this.directLineTokenService.generateToken(securityKey, convRef.user.id);
+            const tokenResponse = await this.directLineTokenService.generateToken(authorizationHeader, convRef.user.id);
             const conversationId = tokenResponse.conversationId;
             const { token } = tokenResponse;
             return {
@@ -111,8 +111,14 @@ export class DirectlineConversationService {
         if (!securityKey) {
             throw new BadRequestException('Wrong type of token provided. Provide Bearer');
         }
-        this.directLineTokenService.verifyDirectLineToken(securityKey, false);
-        await this.atomicOperationService.set(conversationId, Number(watermark));
+        const validPayload = this.directLineTokenService.verifyDirectLineToken(securityKey);
+        if (conversationId !== validPayload.conv) {
+            throw new UnauthorizedException('Token does not belong to this conversation');
+        }
+        // Clients send no watermark or '-' on a fresh connect. Storing NaN would break the counter.
+        if (/^\d+$/.test(watermark ?? '')) {
+            await this.atomicOperationService.set(conversationId, Number(watermark));
+        }
         return {
             conversationId,
             expires_in: this.expires,
@@ -138,15 +144,8 @@ export class DirectlineConversationService {
         authorizationHeader: string,
         files?: UploadDto[]
     ): Promise<unknown> {
-        const token = AuthorizationUtils.removeBearer(authorizationHeader);
-        if (!token) {
-            throw new BadRequestException('Wrong type of token provided. Provide Bearer');
-        }
-        // Validate signature
-        const validPayload = this.directLineTokenService.verifyDirectLineToken(token, true);
-        if (conversationId !== validPayload.conv) {
-            throw new UnauthorizedException('Token does not belong to this conversation');
-        }
+        const validPayload = this.verifyConversationToken(conversationId, authorizationHeader);
+        this.assertActivity(activity);
 
         // Set bot recipient
         activity.recipient = { id: `${validPayload.bot}@${validPayload.site}`, name: validPayload.bot };
@@ -198,7 +197,8 @@ export class DirectlineConversationService {
             throw new BadRequestException('Wrong type of token provided. Provide Bearer');
         }
         // Validate signature
-        this.authorizationService.verifyAccessToken(token);
+        await this.authorizationService.verifyBotToken(token);
+        this.assertActivity(activity);
 
         if (replyToActivity) {
             activity.replyToId = replyToActivity;
@@ -253,6 +253,29 @@ export class DirectlineConversationService {
         activity.conversation = { id: conversationId, isGroup: false, conversationType: '', name: '' };
 
         return activity;
+    }
+
+    /**
+     * Verify a DirectLine token from an Authorization header and check it belongs to the conversation.
+     *
+     * @throws BadRequestException if the header is missing, UnauthorizedException / ForbiddenException if the token is not valid
+     */
+    verifyConversationToken(conversationId: string, authorizationHeader: string): DirectLineTokenPayload {
+        const token = AuthorizationUtils.removeBearer(authorizationHeader);
+        if (!token) {
+            throw new BadRequestException('Wrong type of token provided. Provide Bearer');
+        }
+        const validPayload = this.directLineTokenService.verifyDirectLineToken(token);
+        if (conversationId !== validPayload.conv) {
+            throw new UnauthorizedException('Token does not belong to this conversation');
+        }
+        return validPayload;
+    }
+
+    private assertActivity(activity: unknown): asserts activity is Activity {
+        if (typeof activity !== 'object' || activity === null || Array.isArray(activity)) {
+            throw new BadRequestException('Activity must be a JSON object');
+        }
     }
 
     /**
