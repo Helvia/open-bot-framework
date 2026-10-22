@@ -243,13 +243,9 @@ across `src/` returns nothing). Consequences:
 
 | Endpoint | Checks |
 |----------|--------|
-| *(none)* | There is no health, readiness, or liveness endpoint anywhere in the service |
+| `GET /health` | Liveness only. Returns `200 {"status":"ok"}` while the process serves HTTP. No auth, no rate limit (`src/features/health/health.controller.ts`) |
 
-`src/app.module.ts` declares `controllers: []` and there is no `AppController` — `grep` finds `@Get()` handlers
-only on the CRUD controllers (`openbot`, `openbotsecret`, `webchat`), all of which sit behind `JwtAuthGuard`.
-`GET /` is handled by `ServeStaticModule` serving `client/dist` (`src/app.module.ts:17-23`); with
-`fallthrough: true` and no built client present it 404s. (Earlier revisions of this doc described a
-`"Hello World!"` scaffold response at `/` — that controller no longer exists.)
+There is no readiness endpoint. `/health` does not touch the DB, Redis, or the WebSocket server.
 
 Nothing verifies database connectivity, Redis availability, which atomic-operations backend is actually in use,
 whether `SOCKET_PORT` bound successfully, or downstream bot reachability. An instance whose websocket server
@@ -303,7 +299,7 @@ data-safety risk in the service.
     watermarks restart at 0 in a conversation idle for over an hour.
 17. **Memory and Redis counter backends disagree on missing keys** (`undefined` vs `0`), producing the literal
     string `"undefined"` as a watermark on a cold in-memory instance.
-18. **No health, readiness, or liveness endpoint.** Orchestrators cannot detect an instance with a dead
+18. **Liveness only (`GET /health`), no readiness check.** Orchestrators cannot detect an instance with a dead
     database, a failed `SOCKET_PORT` bind, or a silent in-memory counter fallback. No Dockerfile `HEALTHCHECK`,
     no compose healthcheck on the `app` service.
 19. **A `SOCKET_PORT` bind failure is logged and ignored** (`directline.gateway.ts:57-59`). The service stays
