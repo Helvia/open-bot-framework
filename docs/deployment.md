@@ -9,7 +9,7 @@
 - **WebSocket port:** `SOCKET_PORT`, no fallback. `DirectLineGateway` opens its own `ws.Server({ port: SOCKET_PORT })` in `onModuleInit`, separate from the Fastify HTTP server. If `SOCKET_PORT` is unset, `Number(undefined)` is `NaN` and `ws` binds a random free port.
 - **Base image:** `node:22` (two build stages: `client-builder`, `builder`) -> `node:22-slim` (`production` stage).
 - **Start command:** `node dist/src/main` (Dockerfile `CMD`). Dev: `npm run start:dev`.
-- **Health check:** none. No `/health` route, no `HEALTHCHECK` in the Dockerfile, no healthcheck on the `app` service in `docker-compose.yml`.
+- **Health check:** `GET /health` returns `200 {"status":"ok"}` while the process serves HTTP. Liveness only: it does not check the DB, Redis, or the WebSocket server. No auth, no rate limit. No `HEALTHCHECK` in the Dockerfile and no healthcheck on the `app` service in `docker-compose.yml`.
 
 The HTTP adapter is Fastify, not Express. CORS is `origin: true` (reflects any origin) for `GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS`.
 
