@@ -28,6 +28,7 @@ import { JwtModule } from '@nestjs/jwt';
             isGlobal: true
         }),
         DirectlineModule,
+        HealthModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: (configService: ConfigService) => ({
@@ -58,8 +59,7 @@ import { JwtModule } from '@nestjs/jwt';
         AuthorizationModule,
         OpenBotModule,
         OpenBotsecretModule,
-        WebChatModule,
-        HealthModule
+        WebChatModule
     ],
     controllers: [],
     providers: []
