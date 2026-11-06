@@ -23,7 +23,6 @@ import { AtomicOperationsService } from '../atomicity/atomic-operations.service'
         StorageService,
         AtomicOperationsService
     ],
-    controllers: [DirectlineController, DirectlineAltController],
-    exports: [DirectLineGateway]
+    controllers: [DirectlineController, DirectlineAltController]
 })
 export class DirectlineModule {}
