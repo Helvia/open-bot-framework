@@ -13,7 +13,7 @@ Implements the Microsoft Bot Framework DirectLine 3.0 protocol as a standalone N
 
 ## Tech Stack
 
-- Language: TypeScript (Node 22, CommonJS, SWC via `nest build`)
+- Language: TypeScript (Node 22, CommonJS, tsc via `nest build`; SWC installed but not enabled)
 - Framework: NestJS 11 with the **Fastify** adapter
 - Key dependencies: TypeORM (driver chosen at runtime by `TYPEORM_CONNECTION`; both `pg` and `mysql2` are installed), `ioredis`, `minio` (S3-compatible storage), `ws` (raw WebSocket server), `@nestjs/jwt`, `bcrypt` (admin login only), `class-validator`, `botframework-schema` (types only, a devDependency)
 - Client: React 18 + Vite 5 + Tailwind 3 + react-router-dom 6 + axios (npm workspace `client/`, package name `openbot-ui`)
@@ -105,7 +105,6 @@ CI (`.github/workflows/ci.yml`) runs `npm test`, a SonarQube scan, then builds a
 
 ## Gotchas
 
-- `package.json` `start:prod` is `node dist/main`, but `nest build` emits `dist/src/main.js` (because `ormconfig.ts` sits outside `src/`). The Dockerfile is correct (`node dist/src/main`); the npm script is not.
 - The plain `.env` leaves `STORAGE_ENDPOINT` commented out, so booting with it alone throws `STORAGE_ENDPOINT is required` from `StorageService`.
 - `cacheManager.wrap(key, fn, 10)` — cache-manager v7 measures TTL in **milliseconds**, so these caches live ~10 ms. Cache keys are also unprefixed raw ids (`handle`, secret id, channel id) in one global store.
 - `WebChatController` validates `:id` with `ParseUUIDPipe`, but channel ids are 11-char random strings, so per-channel GET/PATCH/DELETE reject real ids.

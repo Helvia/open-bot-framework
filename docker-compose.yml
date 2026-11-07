@@ -1,23 +1,40 @@
 services:
   app:
     build: .
+    restart: unless-stopped
     ports:
-      - "1986:1986"
-      - "1992:1992"
+      - "${PORT:-1986}:${PORT:-1986}"
+      - "${SOCKET_PORT:-1992}:${SOCKET_PORT:-1992}"
     env_file:
       - .env
+    # Overrides for running inside compose. .env stays as-is for host-based local dev.
     environment:
       TYPEORM_HOST: postgres
       TYPEORM_PASSWORD: postgres
       REDIS_URI: redis://redis:6379
+      # URLs handed to the browser
+      DIRECTLINE_HOST: localhost:${PORT:-1986}
+      DIRECTLINE_SOCKET_URL: ws://localhost:${SOCKET_PORT:-1992}
+      # No proxy in front of the app here; trusting X-Forwarded-For would let clients spoof their IP
+      TRUST_PROXY_HOPS: 0
+      # Object storage (MinIO below). Attachment links are built as ${STORAGE_ENDPOINT}/<bucket>/<key>,
+      # so they point to http://minio:9000/... and only resolve inside the compose network, not from the browser.
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_BUCKET: obf
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
 
   postgres:
     image: postgres:16-alpine
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -32,6 +49,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    ports:
+      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -40,6 +59,22 @@ services:
       timeout: 5s
       retries: 5
 
+  # minio/minio and minio/mc were removed from Docker Hub and quay.io. bitnamilegacy/minio is a frozen
+  # (no further updates) build that still pulls; fine for local dev, not for production.
+  minio:
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # web console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      # Created on startup; `download` = anonymous read, so attachment links work
+      MINIO_DEFAULT_BUCKETS: obf:download
+    volumes:
+      - minio_data:/bitnami/minio/data
+
 volumes:
   postgres_data:
   redis_data:
+  minio_data:

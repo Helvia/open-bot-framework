@@ -16,15 +16,15 @@ Flow: `hbf-webchat (browser) -> OBF (DirectLine API) -> hbf-bot (REST)`
 - **WebSockets:** `ws` library via `@nestjs/platform-ws` (NOT Socket.io)
 - **Cache:** Redis (ioredis)
 - **File storage:** AWS S3 (`@aws-sdk/client-s3`)
-- **Compiler:** SWC (faster than tsc for builds)
+- **Compiler:** tsc via `nest build` (SWC is installed but not enabled in `nest-cli.json`)
 - **Linting:** ESLint flat config (`eslint.config.mjs`) + Prettier
 
 ## Commands
 
 ```bash
-npm run build        # nest build (SWC)
+npm run build        # nest build (tsc)
 npm run start:dev    # nest start --watch
-npm run start:prod   # node dist/main
+npm run start:prod   # node dist/src/main
 npm test             # Jest
 npm run lint         # ESLint --fix
 npm run format       # Prettier --write
@@ -64,8 +64,8 @@ nest-cli.json         # NestJS CLI config
 
 - This service uses Fastify. Do not use Express middleware or decorators.
 - PostgreSQL (not MySQL like other services). Connection config in `ormconfig.ts`.
-- SWC is the compiler (configured in `nest-cli.json`). Faster builds but some decorator edge cases differ from tsc.
-- The `start:prod` entry is `dist/main` (not `dist/src/main`).
+- `nest build` uses tsc, not SWC: `nest-cli.json` has no `"builder": "swc"`. SWC (`@swc/cli`, `@swc/core`) is installed but unused.
+- Build output is `dist/src/main.js` (not `dist/main.js`), because `ormconfig.ts` at the repo root widens the compile root. `start:prod` and the Dockerfile `CMD` both use `dist/src/main`.
 
 ## Docs
 

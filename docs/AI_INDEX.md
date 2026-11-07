@@ -75,7 +75,7 @@ Files relevant to activity watermark counters:
 Load when working on Docker, env vars, ports, or CI/CD for this service:
 - `docs/deployment.md` — ports, required env vars, local run commands
 - `Dockerfile` — three-stage build (client, server, slim runtime), `CMD node dist/src/main`
-- `docker-compose.yml` — standalone stack with Postgres 16 and Redis 7
+- `docker-compose.yml` — standalone stack with Postgres 16, Redis 7 and MinIO (bucket auto-created)
 - `.env` / `.env.local.dev` — standalone vs HBF local-dev configuration
 - `.github/workflows/ci.yml` — test, SonarQube, ECR build, EKS rollout
 - `docs/architecture/deployment.md` (framework repo) — platform deployment reference
