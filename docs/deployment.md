@@ -85,17 +85,23 @@ Config is loaded by `@nestjs/config` from `['.env.local', '.env']`, in that orde
 # Build (builds the SPA, the Nest server, then prunes dev deps)
 docker build -t open-bot-framework .
 
-# Run the full stack: app + postgres + redis
+# Run the full stack: app + postgres + redis + minio
 docker compose up --build
 ```
 
-`docker-compose.yml` defines three services:
+`docker-compose.yml` defines five services:
 
-- `app` — built from the local Dockerfile, publishes `1986:1986` and `1992:1992`, loads `.env` via `env_file` and overrides `TYPEORM_HOST`, `TYPEORM_PASSWORD`, and `REDIS_URI` for the in-compose services.
-- `postgres` — `postgres:16-alpine`, database `obf`, named volume `postgres_data`, `pg_isready` healthcheck.
-- `redis` — `redis:7-alpine`, named volume `redis_data`, `redis-cli ping` healthcheck.
+- `app` — built from the local Dockerfile, `restart: unless-stopped`, publishes `${PORT:-1986}` and `${SOCKET_PORT:-1992}`, loads `.env` via `env_file`. Its `environment:` overrides values for running inside compose (`.env` itself is unchanged for host-based dev):
+  - `TYPEORM_HOST`, `TYPEORM_PASSWORD`, `REDIS_URI` point at the in-compose services.
+  - `DIRECTLINE_HOST=localhost:${PORT}` and `DIRECTLINE_SOCKET_URL=ws://localhost:${SOCKET_PORT}`, so URLs handed to the browser work.
+  - `TRUST_PROXY_HOPS=0`: no proxy in front, so `X-Forwarded-For` is not trusted.
+  - `STORAGE_ENDPOINT=http://minio:9000`, `STORAGE_BUCKET=obf`, MinIO credentials. Without these `StorageService` throws at boot.
+- `postgres` — `postgres:16-alpine`, database `obf`, named volume `postgres_data`, `pg_isready` healthcheck, published on `5432`.
+- `redis` — `redis:7-alpine`, named volume `redis_data`, `redis-cli ping` healthcheck, published on `6379`.
+- `minio` — `minio/minio:latest` (upstream stopped publishing new community images in late 2025), S3 API on `9000`, console on `9001`, credentials `minioadmin` / `minioadmin`, named volume `minio_data`.
+- `minio-init` — one-shot `minio/mc` container that waits for MinIO, creates the `obf` bucket and enables anonymous download.
 
-`app` waits on both healthchecks via `depends_on: condition: service_healthy`. Note the compose stack does not set `STORAGE_*`, so attachment uploads fail there unless `.env` supplies them.
+`app` waits for the postgres and redis healthchecks (`service_healthy`) and for `minio-init` to finish (`service_completed_successfully`). Attachment links are built as `${STORAGE_ENDPOINT}/<bucket>/<key>`, so in compose they point to `http://minio:9000/...` and only resolve inside the compose network, not from the browser.
 
 ## CI/CD
 
