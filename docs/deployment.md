@@ -89,7 +89,7 @@ docker build -t open-bot-framework .
 docker compose up --build
 ```
 
-`docker-compose.yml` defines five services:
+`docker-compose.yml` defines four services:
 
 - `app` — built from the local Dockerfile, `restart: unless-stopped`, publishes `${PORT:-1986}` and `${SOCKET_PORT:-1992}`, loads `.env` via `env_file`. Its `environment:` overrides values for running inside compose (`.env` itself is unchanged for host-based dev):
   - `TYPEORM_HOST`, `TYPEORM_PASSWORD`, `REDIS_URI` point at the in-compose services.
@@ -98,10 +98,9 @@ docker compose up --build
   - `STORAGE_ENDPOINT=http://minio:9000`, `STORAGE_BUCKET=obf`, MinIO credentials. Without these `StorageService` throws at boot.
 - `postgres` — `postgres:16-alpine`, database `obf`, named volume `postgres_data`, `pg_isready` healthcheck, published on `5432`.
 - `redis` — `redis:7-alpine`, named volume `redis_data`, `redis-cli ping` healthcheck, published on `6379`.
-- `minio` — `minio/minio:latest` (upstream stopped publishing new community images in late 2025), S3 API on `9000`, console on `9001`, credentials `minioadmin` / `minioadmin`, named volume `minio_data`.
-- `minio-init` — one-shot `minio/mc` container that waits for MinIO, creates the `obf` bucket and enables anonymous download.
+- `minio` — `bitnamilegacy/minio:2025.7.23-debian-12-r5`, S3 API on `9000`, console on `9001`, credentials `minioadmin` / `minioadmin`, named volume `minio_data`. `MINIO_DEFAULT_BUCKETS=obf:download` creates the `obf` bucket with anonymous read on startup. The official `minio/minio` and `minio/mc` images were removed from Docker Hub and quay.io; the Bitnami legacy image is frozen (no updates), so it is for local dev only.
 
-`app` waits for the postgres and redis healthchecks (`service_healthy`) and for `minio-init` to finish (`service_completed_successfully`). Attachment links are built as `${STORAGE_ENDPOINT}/<bucket>/<key>`, so in compose they point to `http://minio:9000/...` and only resolve inside the compose network, not from the browser.
+`app` waits for the postgres and redis healthchecks (`service_healthy`) and for `minio` to start (the app only talks to storage on upload, not at boot). Attachment links are built as `${STORAGE_ENDPOINT}/<bucket>/<key>`, so in compose they point to `http://minio:9000/...` and only resolve inside the compose network, not from the browser.
 
 ## CI/CD
 
