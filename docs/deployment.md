@@ -7,9 +7,12 @@
 
 - **HTTP port:** `1986`. From `process.env.PORT` with a literal `1986` fallback in `src/main.ts` (`app.listen(process.env.PORT ?? 1986, '0.0.0.0')`).
 - **WebSocket port:** `SOCKET_PORT`, no fallback. `DirectLineGateway` opens its own `ws.Server({ port: SOCKET_PORT })` in `onModuleInit`, separate from the Fastify HTTP server. If `SOCKET_PORT` is unset, `Number(undefined)` is `NaN` and `ws` binds a random free port.
-- **Base image:** `node:22` (two build stages: `client-builder`, `builder`) -> `node:22-slim` (`production` stage).
+- **Base image:** `node:22` for the build stages (`client-builder`, `prod-deps`, `builder`) -> `node:22-slim` (`production` stage). `NODE_VERSION` build arg, default `22`.
+- **Runtime user:** non-root `appuser` (UID/GID `10001`, overridable via `APP_UID` / `APP_GID` build args). App files are root-owned and read-only to it; the app does not write to disk. Both ports are >1024, so no extra capabilities are needed. Pairs with k8s `runAsNonRoot: true` / `runAsUser: 10001`.
+- **PID 1:** `tini` (`ENTRYPOINT ["/usr/bin/tini", "--"]`) forwards SIGTERM to node and reaps zombies.
+- **Dependencies:** production `node_modules` comes from a separate `prod-deps` stage (`npm ci --omit=dev --workspaces=false`), so the `client/` workspace's React/Vite packages are not shipped.
 - **Start command:** `node dist/src/main` (Dockerfile `CMD`). Dev: `npm run start:dev`.
-- **Health check:** `GET /health` returns `200 {"status":"ok"}` while the process serves HTTP. Liveness only: it does not check the DB, Redis, or the WebSocket server. No auth, no rate limit. No `HEALTHCHECK` in the Dockerfile and no healthcheck on the `app` service in `docker-compose.yml`.
+- **Health check:** `GET /health` returns `200 {"status":"ok"}` while the process serves HTTP. Liveness only: it does not check the DB, Redis, or the WebSocket server. No auth, no rate limit. The Dockerfile `HEALTHCHECK` calls it every 30s via `node -e fetch(...)` on `PORT` (default `1986`); Docker / compose use it, Kubernetes ignores it and needs its own probes.
 
 The HTTP adapter is Fastify, not Express. CORS is `origin: true` (reflects any origin) for `GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS`.
 
@@ -123,7 +126,6 @@ The Nest `ConfigModule` reads `.env.local` and `.env`, not `.env.local.dev`, so 
 
 - **Not PostgreSQL-only.** Both `pg` and `mysql2` are dependencies and `TYPEORM_CONNECTION` is passed through untouched (`src/app.module.ts`, `ormconfig.ts`). PostgreSQL is what compose and the committed `.env` use; local dev uses MySQL.
 - **`synchronize: true` with no migrations.** `src/app.module.ts` hardcodes `synchronize: true`, so TypeORM alters the live schema from entity metadata on every boot. There is no `migrations/` directory, so `migrationsRun` and `TYPEORM_AUTORUN_MIGRATIONS` currently do nothing. Running `synchronize` against a shared or production database risks destructive column changes; introducing migrations means turning it off first.
-- **`npm run start:prod` is broken.** It runs `node dist/main`, but `nest build` emits `dist/src/main.js` (the compile root spans the repo root because `ormconfig.ts` sits outside `src/`). The Dockerfile `CMD` and the local-dev command both correctly use `dist/src/main`; only the package script is wrong.
 - **Object storage uses the `minio` client, not `@aws-sdk`.** `StorageService` parses `STORAGE_ENDPOINT` with `new URL()` and derives `endPoint`, `port`, and `useSSL` from it, which is why the endpoint is mandatory for every backend including AWS S3.
 - **Two listeners, two ports.** The Fastify HTTP server and the `ws.Server` are independent. Any ingress, service definition, or firewall rule has to expose both, and a health probe on the HTTP port says nothing about the WebSocket server.
 - **`.env` is committed.** It holds local placeholder values (`JWT_SECRET='safe-256-bit'`, empty storage keys, empty DB password) plus a real bcrypt hash in `ADMIN_PASSWORD`. Nothing there is a live production credential, but the file being tracked means any accidental commit of real values would ship silently. `docker-compose.yml` loads it via `env_file`.

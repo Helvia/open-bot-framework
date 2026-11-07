@@ -236,8 +236,8 @@ across `src/` returns nothing). Consequences:
   library does not terminate already-established sockets, so it would not drain them either.
 - **The Redis client is never quit** and TypeORM's pool is never closed, so connections are dropped rather than
   released.
-- **No `HEALTHCHECK` in the Dockerfile** and no healthcheck for the `app` service in `docker-compose.yml` (only
-  `postgres` and `redis` have one), so an orchestrator has no signal to stop routing traffic before the kill.
+- **The Dockerfile `HEALTHCHECK` is liveness only** (`GET /health`), so an orchestrator still has no readiness signal to
+  stop routing traffic before the kill.
 
 ## Health Checks
 
@@ -300,8 +300,8 @@ data-safety risk in the service.
 17. **Memory and Redis counter backends disagree on missing keys** (`undefined` vs `0`), producing the literal
     string `"undefined"` as a watermark on a cold in-memory instance.
 18. **Liveness only (`GET /health`), no readiness check.** Orchestrators cannot detect an instance with a dead
-    database, a failed `SOCKET_PORT` bind, or a silent in-memory counter fallback. No Dockerfile `HEALTHCHECK`,
-    no compose healthcheck on the `app` service.
+    database, a failed `SOCKET_PORT` bind, or a silent in-memory counter fallback. The Dockerfile `HEALTHCHECK` hits the
+    same liveness endpoint.
 19. **A `SOCKET_PORT` bind failure is logged and ignored** (`directline.gateway.ts:57-59`). The service stays
     "up" with real-time delivery completely broken.
 20. **No graceful shutdown at all.** Shutdown hooks are not enabled and no signal handler exists, so
