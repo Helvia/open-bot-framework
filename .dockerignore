@@ -1,6 +1,30 @@
-node_modules
-dist
-.git
-.env*
+# Dependencies and build output (root and client/)
+**/node_modules
+**/dist
 coverage
+*.tsbuildinfo
+
+# Secrets / local env
+.env*
+
+# VCS, CI, editor
+.git
+.github
+.vscode
+.worktreeinclude
+
+# Not needed in the image
+docs
+load-tests
+test
+*.md
+LICENSE
+NOTICE
+sonar-project.properties
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# Logs / OS junk
 *.log
+.DS_Store

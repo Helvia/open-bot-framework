@@ -7,9 +7,12 @@
 
 - **HTTP port:** `1986`. From `process.env.PORT` with a literal `1986` fallback in `src/main.ts` (`app.listen(process.env.PORT ?? 1986, '0.0.0.0')`).
 - **WebSocket port:** `SOCKET_PORT`, no fallback. `DirectLineGateway` opens its own `ws.Server({ port: SOCKET_PORT })` in `onModuleInit`, separate from the Fastify HTTP server. If `SOCKET_PORT` is unset, `Number(undefined)` is `NaN` and `ws` binds a random free port.
-- **Base image:** `node:22` (two build stages: `client-builder`, `builder`) -> `node:22-slim` (`production` stage).
+- **Base image:** `node:22` for the build stages (`client-builder`, `prod-deps`, `builder`) -> `node:22-slim` (`production` stage). `NODE_VERSION` build arg, default `22`.
+- **Runtime user:** non-root `appuser` (UID/GID `10001`, overridable via `APP_UID` / `APP_GID` build args). App files are root-owned and read-only to it; the app does not write to disk. Both ports are >1024, so no extra capabilities are needed. Pairs with k8s `runAsNonRoot: true` / `runAsUser: 10001`.
+- **PID 1:** `tini` (`ENTRYPOINT ["/usr/bin/tini", "--"]`) forwards SIGTERM to node and reaps zombies.
+- **Dependencies:** production `node_modules` comes from a separate `prod-deps` stage (`npm ci --omit=dev --workspaces=false`), so the `client/` workspace's React/Vite packages are not shipped.
 - **Start command:** `node dist/src/main` (Dockerfile `CMD`). Dev: `npm run start:dev`.
-- **Health check:** `GET /health` returns `200 {"status":"ok"}` while the process serves HTTP. Liveness only: it does not check the DB, Redis, or the WebSocket server. No auth, no rate limit. No `HEALTHCHECK` in the Dockerfile and no healthcheck on the `app` service in `docker-compose.yml`.
+- **Health check:** `GET /health` returns `200 {"status":"ok"}` while the process serves HTTP. Liveness only: it does not check the DB, Redis, or the WebSocket server. No auth, no rate limit. The Dockerfile `HEALTHCHECK` calls it every 30s via `node -e fetch(...)` on `PORT` (default `1986`); Docker / compose use it, Kubernetes ignores it and needs its own probes.
 
 The HTTP adapter is Fastify, not Express. CORS is `origin: true` (reflects any origin) for `GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS`.
 
@@ -95,17 +98,22 @@ The agent starts only when `ELASTIC_APM_SERVER_URL` is set. It reads its config 
 # Build (builds the SPA, the Nest server, then prunes dev deps)
 docker build -t open-bot-framework .
 
-# Run the full stack: app + postgres + redis
+# Run the full stack: app + postgres + redis + minio
 docker compose up --build
 ```
 
-`docker-compose.yml` defines three services:
+`docker-compose.yml` defines four services:
 
-- `app` — built from the local Dockerfile, publishes `1986:1986` and `1992:1992`, loads `.env` via `env_file` and overrides `TYPEORM_HOST`, `TYPEORM_PASSWORD`, and `REDIS_URI` for the in-compose services.
-- `postgres` — `postgres:16-alpine`, database `obf`, named volume `postgres_data`, `pg_isready` healthcheck.
-- `redis` — `redis:7-alpine`, named volume `redis_data`, `redis-cli ping` healthcheck.
+- `app` — built from the local Dockerfile, `restart: unless-stopped`, publishes `${PORT:-1986}` and `${SOCKET_PORT:-1992}`, loads `.env` via `env_file`. Its `environment:` overrides values for running inside compose (`.env` itself is unchanged for host-based dev):
+  - `TYPEORM_HOST`, `TYPEORM_PASSWORD`, `REDIS_URI` point at the in-compose services.
+  - `DIRECTLINE_HOST=localhost:${PORT}` and `DIRECTLINE_SOCKET_URL=ws://localhost:${SOCKET_PORT}`, so URLs handed to the browser work.
+  - `TRUST_PROXY_HOPS=0`: no proxy in front, so `X-Forwarded-For` is not trusted.
+  - `STORAGE_ENDPOINT=http://minio:9000`, `STORAGE_BUCKET=obf`, MinIO credentials. Without these `StorageService` throws at boot.
+- `postgres` — `postgres:16-alpine`, database `obf`, named volume `postgres_data`, `pg_isready` healthcheck, published on `5432`.
+- `redis` — `redis:7-alpine`, named volume `redis_data`, `redis-cli ping` healthcheck, published on `6379`.
+- `minio` — `bitnamilegacy/minio:2025.7.23-debian-12-r5`, S3 API on `9000`, console on `9001`, credentials `minioadmin` / `minioadmin`, named volume `minio_data`. `MINIO_DEFAULT_BUCKETS=obf:download` creates the `obf` bucket with anonymous read on startup. The official `minio/minio` and `minio/mc` images were removed from Docker Hub and quay.io; the Bitnami legacy image is frozen (no updates), so it is for local dev only.
 
-`app` waits on both healthchecks via `depends_on: condition: service_healthy`. Note the compose stack does not set `STORAGE_*`, so attachment uploads fail there unless `.env` supplies them.
+`app` waits for the postgres and redis healthchecks (`service_healthy`) and for `minio` to start (the app only talks to storage on upload, not at boot). Attachment links are built as `${STORAGE_ENDPOINT}/<bucket>/<key>`, so in compose they point to `http://minio:9000/...` and only resolve inside the compose network, not from the browser.
 
 ## CI/CD
 
@@ -136,7 +144,6 @@ The Nest `ConfigModule` reads `.env.local` and `.env`, not `.env.local.dev`, so 
 
 - **Not PostgreSQL-only.** Both `pg` and `mysql2` are dependencies and `TYPEORM_CONNECTION` is passed through untouched (`src/app.module.ts`, `ormconfig.ts`). PostgreSQL is what compose and the committed `.env` use; local dev uses MySQL.
 - **`synchronize: true` with no migrations.** `src/app.module.ts` hardcodes `synchronize: true`, so TypeORM alters the live schema from entity metadata on every boot. There is no `migrations/` directory, so `migrationsRun` and `TYPEORM_AUTORUN_MIGRATIONS` currently do nothing. Running `synchronize` against a shared or production database risks destructive column changes; introducing migrations means turning it off first.
-- **`npm run start:prod` is broken.** It runs `node dist/main`, but `nest build` emits `dist/src/main.js` (the compile root spans the repo root because `ormconfig.ts` sits outside `src/`). The Dockerfile `CMD` and the local-dev command both correctly use `dist/src/main`; only the package script is wrong.
 - **Object storage uses the `minio` client, not `@aws-sdk`.** `StorageService` parses `STORAGE_ENDPOINT` with `new URL()` and derives `endPoint`, `port`, and `useSSL` from it, which is why the endpoint is mandatory for every backend including AWS S3.
 - **Two listeners, two ports.** The Fastify HTTP server and the `ws.Server` are independent. Any ingress, service definition, or firewall rule has to expose both, and a health probe on the HTTP port says nothing about the WebSocket server.
 - **`.env` is committed.** It holds local placeholder values (`JWT_SECRET='safe-256-bit'`, empty storage keys, empty DB password) plus a real bcrypt hash in `ADMIN_PASSWORD`. Nothing there is a live production credential, but the file being tracked means any accidental commit of real values would ship silently. `docker-compose.yml` loads it via `env_file`.
