@@ -76,6 +76,19 @@ Config is loaded by `@nestjs/config` from `['.env.local', '.env']`, in that orde
 | REDIS_URI | no | ioredis connection URI for the atomic counter backend |
 | ATOMIC_OPERATIONS_IMPLEMENTATION | no | `redis` or `memory`; falls back to in-memory when Redis is unavailable |
 
+**Elastic APM** (`elastic-apm-node`, started from `src/apm.ts`, the first import in `src/main.ts`)
+
+The agent starts only when `ELASTIC_APM_SERVER_URL` is set. It reads its config straight from the process environment before Nest boots, so these must be real env vars (Deployment/ConfigMap/Secret): values in `.env` / `.env.local` are loaded later by `@nestjs/config` and are not seen by the agent. Any other [`ELASTIC_APM_*` option](https://www.elastic.co/guide/en/apm/agent/nodejs/current/configuration.html) works the same way.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| ELASTIC_APM_SERVER_URL | no | APM / Integrations Server URL. Unset = agent not started |
+| ELASTIC_APM_SECRET_TOKEN | with server URL | APM secret token (or use `ELASTIC_APM_API_KEY`). Keep it in a Secret |
+| ELASTIC_APM_SERVICE_NAME | no | Defaults to the `name` in package.json; set `open-bot-framework` |
+| ELASTIC_APM_ENVIRONMENT | no | e.g. `production` |
+| ELASTIC_APM_ACTIVE | no | `false` disables the agent even when a server URL is set |
+| ELASTIC_APM_TRANSACTION_SAMPLE_RATE | no | `0.0`–`1.0`; lower it in prod to cut agent CPU overhead |
+
 ## Docker
 
 ```bash
